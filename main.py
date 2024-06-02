@@ -1,5 +1,7 @@
 import rasterio
 import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
 from typing import List
 
 class Fmask():
@@ -33,15 +35,15 @@ class Fmask():
 
         ndvi = (b4 - b3) / (b4 + b3)
 
-        modified__ndvi = ndvi.copy()
+        modified_ndvi = ndvi.copy()
 
         b3_0_to_255 = np.max((b3 - np.min(b3)) / (np.max(b3) - np.min(b3)) * 255)
 
-        pixels_to_modify = (b3_0_to_255 == 255) & (b3 < b4)
+        pixels_to_modify = (b3_0_to_255 == 255) & (b4 > b3)
 
-        modified__ndvi[pixels_to_modify] = 0
+        modified_ndvi[pixels_to_modify] = 0
 
-        return ndvi, modified__ndvi
+        return ndvi, modified_ndvi
 
     def calculate_ndsi(self,
                        b2: np.ndarray, 
@@ -59,16 +61,16 @@ class Fmask():
 
         ndsi = (b2 - b5) / (b2 + b5)
 
-        modified__ndsi = ndsi.copy()
+        modified_ndsi = ndsi.copy()
 
         b2_0_to_255 = np.max((b2 - np.min(b2)) / (np.max(b2) - np.min(b2)) * 255)
 
-        pixels_to_modify = (b2_0_to_255 == 255) & (b2 < b5)
+        pixels_to_modify = (b2_0_to_255 == 255) & (b5 > b2)
 
-        modified__ndsi[pixels_to_modify] = 0
+        modified_ndsi[pixels_to_modify] = 0
 
 
-        return ndsi, modified__ndsi
+        return ndsi, modified_ndsi
 
     def calculate_brightness_temperature(self, band_thermal, k1, k2, to_celsius=False):
         radiance = band_thermal * 0.05518 + 1.2378  # Ajuste conforme necessário
@@ -233,7 +235,11 @@ class Fmask():
             water_test=water_test, b7=b7)
 
         # Eq. 8
-        t_water = np.percentile(bt[clear_sky_water], 82.5)
+        t_water = None
+        try:
+            t_water = np.percentile(bt[clear_sky_water], 82.5)
+        except:
+            t_water = np.zeros_like(bt)
 
         # Eq. 9
         w_temperature_prob = (t_water - bt) / 4
@@ -278,7 +284,7 @@ class Fmask():
         variability_prob = 1 - np.maximum(maximum, whiteness)
 
         # Eq. 16
-        l_cloud_prob = l_temperature_prob * variability_prob
+        l_cloud_prob = l_temperature_prob #* variability_prob
 
         return l_cloud_prob, t_low, t_high
 
@@ -313,34 +319,34 @@ class Fmask():
         # Eq. 12
         clear_sky_land = np.logical_not(pcp) & np.logical_not(water_test)
 
+
         l_cloud_prob, t_low, t_high = self.land_cloud_prob(bt=bt,
                                                            modified_ndvi=modified_ndvi,
                                                            modified_ndsi=modified_ndsi,
                                                            whiteness=whiteness,
                                                            clear_sky_land=clear_sky_land)
-
+        
         # Eq. 17
         land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
 
         # Eq. 18
-        # pcl_1 = np.logical_and(pcp, water_test)
-        # pcl_1 = np.logical_and(pcl_1, w_cloud_prob > 0.5)
-        pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
+        # pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
+        pcl_1 = np.logical_and(pcp, water_test)
+        pcl_1 = np.logical_and(pcl_1, w_cloud_prob > 0.5)
 
-        # pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
-        # pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
-        pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
+        # pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
+        pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
+        pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
 
-
-
-        # pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
-        pcl_3 = (l_cloud_prob > 0.99) & (water_test == False)
+        pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
+        # pcl_3 = (l_cloud_prob > 0.99) & (water_test == False)
+        # print(l_cloud_prob.max())
 
         pcl_4 = bt < (t_low - 35)
 
-        return pcl_1 | pcl_2 | pcl_3 | pcl_4
-        # return np.logical_or(pcl_1, pcl_2)
-        return np.logical_or(np.logical_or(np.logical_or(pcl_1, pcl_2), pcl_3), pcl_4)
+        # pcl =  np.logical_or(np.logical_or(np.logical_or(pcl_1, pcl_2), pcl_3), pcl_4)
+        pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
+        return pcl 
 
     def detect_clouds(self, bands: np.ndarray) -> np.ndarray:
         """_summary_
@@ -373,8 +379,6 @@ class Fmask():
                             ndsi=ndsi,
                             whiteness=whiteness)
         
-        return pcp
-
         # Pass Two
         pcl = self.pass_two(b5=B5,
                       b7=B7,
@@ -390,7 +394,7 @@ class Fmask():
     def detect_shadows(self, bands, cloud_mask):
        pass
 
-    def save(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
+    def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
 
         Args:
@@ -404,6 +408,28 @@ class Fmask():
             profile.update(count=1)
             with rasterio.open(output_file, 'w', **profile) as dst:
                 dst.write(band, 1)
+
+    def save_plot(self, result: np.ndarray, color_composite: np.ndarray, save_dir: str, name: str) -> None:
+        """_summary_
+
+        Args:
+            band (np.ndarray): _description_
+            tif_file (str): _description_
+            output_file (str): _description_
+        """
+        fig = plt.figure(figsize=(25, 15))
+        plt.subplot(1, 2, 1)
+        plt.imshow(color_composite, interpolation='nearest', aspect='auto')
+        plt.axis(False)
+
+        plt.subplot(1, 2, 2)
+        plt.imshow(result, interpolation='nearest', aspect='auto')
+        plt.axis(False)
+
+        fig.savefig(save_dir+name, dpi=fig.dpi)
+
+        # with rasterio.open(tif_file) as src:
+            
 
     def create_fmask(self, tif_file: str) -> np.ndarray:
         """_summary_
@@ -424,13 +450,23 @@ class Fmask():
         fmask[cloud_mask] = 1
         # fmask[shadow_mask] = 2
 
-        return cloud_mask
+        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), fmask
 
 
 if __name__ == "__main__":
-    input_tif = "./test_images/seixas_20110808.tif"
-    input_tif = "./test_images/seixas_20110128.tif"
-    output_tif = "./outputs_toa.tif"
+    import os
+
+    # root = './test_images'
+    root = './2004'
+
+    inputs = [f"{root}/{img}" for img in os.listdir(root)]
+    print(inputs)
+    save_dir = "./results/"
+    
     fmask = Fmask()
-    result = fmask.create_fmask(input_tif)
-    fmask.save(result, input_tif, output_tif)
+
+    for inp in inputs:
+        file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
+        color_composite, result = fmask.create_fmask(inp)
+        fmask.save_plot(result, color_composite, save_dir, name=file_name)
+        # fmask.save(result, inp, file_name)
