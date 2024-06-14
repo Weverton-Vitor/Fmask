@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from typing import List
+from segmentation_mask_overlay import overlay_masks
+from matplotlib.patches import Patch
 
 class Fmask():
 
@@ -17,6 +19,11 @@ class Fmask():
         """
         with rasterio.open(tif_file) as src:
             bands = src.read()
+
+        for b in bands:
+            print(b)
+
+        # print("Bands: ", len(bands))
         return bands
 
     def calculate_ndvi(self,
@@ -325,28 +332,30 @@ class Fmask():
                                                            modified_ndsi=modified_ndsi,
                                                            whiteness=whiteness,
                                                            clear_sky_land=clear_sky_land)
-        
         # Eq. 17
         land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
 
-        # Eq. 18
+        # Eq. 18 
+        # Clouds above water
         # pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
         pcl_1 = np.logical_and(pcp, water_test)
         pcl_1 = np.logical_and(pcl_1, w_cloud_prob > 0.5)
 
+        # Clouds above land
         # pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
         pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
         pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
 
+        # High land cloud probability 
         pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
         # pcl_3 = (l_cloud_prob > 0.99) & (water_test == False)
-        # print(l_cloud_prob.max())
 
+        # 
         pcl_4 = bt < (t_low - 35)
 
         # pcl =  np.logical_or(np.logical_or(np.logical_or(pcl_1, pcl_2), pcl_3), pcl_4)
         pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
-        return pcl 
+        return pcl
 
     def detect_clouds(self, bands: np.ndarray) -> np.ndarray:
         """_summary_
@@ -370,6 +379,7 @@ class Fmask():
         ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
         ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
         bt = B6 - 273.15
+        print(bt, B6, B5)
         whiteness = self.whiteness_test(B3, B2, B1)
         water = self.water_test(ndvi, B7)
 
@@ -409,36 +419,48 @@ class Fmask():
             with rasterio.open(output_file, 'w', **profile) as dst:
                 dst.write(band, 1)
 
-    def save_plot(self, result: np.ndarray, color_composite: np.ndarray, save_dir: str, name: str) -> None:
-        """_summary_
+    def save_plot(self, mask: np.ndarray, color_composite: np.ndarray, save_dir: str, name: str) -> None:
+        """ Save a plot contains mask with mask
 
         Args:
-            band (np.ndarray): _description_
-            tif_file (str): _description_
-            output_file (str): _description_
+            mask (np.ndarray): Final mask
+            color_composite (str): A color composite with three bands
+            save_dir (str): Directory to save the plot
+            name (str): Name of the file
         """
+
         fig = plt.figure(figsize=(25, 15))
         plt.subplot(1, 2, 1)
         plt.imshow(color_composite, interpolation='nearest', aspect='auto')
         plt.axis(False)
 
+        colors = ['white']
+        classes = ['Nuvem']
+        masked_image = overlay_masks(color_composite, mask,['Nuvem'], colors=colors)
+
         plt.subplot(1, 2, 2)
-        plt.imshow(result, interpolation='nearest', aspect='auto')
+        plt.imshow(color_composite, interpolation='nearest', aspect='auto')
+        plt.imshow(masked_image, alpha=1, interpolation='nearest', aspect='auto')
+
+
+        legend_elements = [Patch(facecolor=colors[i], edgecolor='black', label=f'{classes[i]}') for i in range(len(colors))]
+
+        plt.legend(handles=legend_elements, loc='upper left', fontsize=25)
         plt.axis(False)
 
         fig.savefig(save_dir+name, dpi=fig.dpi)
 
-        # with rasterio.open(tif_file) as src:
-            
 
     def create_fmask(self, tif_file: str) -> np.ndarray:
-        """_summary_
+        """Receives the landsat image and return the segmentation mask for 
+           cloud and cloud shadow
 
         Args:
-            tif_file (str): _description_
+            tif_file (str): Path to .tif with the bands
 
         Returns:
-            np.ndarray: _description_
+            np.ndarray: Mask containing cloud segmentation(value 1) 
+                        and cloud shadow (value 2) 
         """
 
         bands = self.read_landsat_bands(tif_file)
@@ -460,13 +482,17 @@ if __name__ == "__main__":
     root = './2004'
 
     inputs = [f"{root}/{img}" for img in os.listdir(root)]
-    print(inputs)
+    # inputs = ['./2004/seixas_20041124.tif']
     save_dir = "./results/"
+
+    # inputs = ['./seixas_20041124.tif']
+    # save_dir = "./"
     
     fmask = Fmask()
 
     for inp in inputs:
         file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
         color_composite, result = fmask.create_fmask(inp)
+        fmask.save_tif(result, inputs[0], './test.tif')
         fmask.save_plot(result, color_composite, save_dir, name=file_name)
         # fmask.save(result, inp, file_name)

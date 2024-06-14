@@ -1,1 +1,4 @@
 /venv/
+/*.tif
+/*.png
+/*.tif.aux.xml
