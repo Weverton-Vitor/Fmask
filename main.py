@@ -1,7 +1,7 @@
 import rasterio
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
+from PIL import Image, ImageDraw
 from typing import List
 from segmentation_mask_overlay import overlay_masks
 from matplotlib.patches import Patch
@@ -20,8 +20,8 @@ class Fmask():
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        for b in bands:
-            print(b)
+        # for b in bands:
+        #     print(b)
 
         # print("Bands: ", len(bands))
         return bands
@@ -357,52 +357,72 @@ class Fmask():
         pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
         return pcl
 
-    def detect_clouds(self, bands: np.ndarray) -> np.ndarray:
-        """_summary_
+    def detect_clouds(self, b1: np.ndarray,                     
+                      b3: np.ndarray,
+                      b4: np.ndarray,
+                      b5: np.ndarray,
+                      b7: np.ndarray,
+                      bt: np.ndarray,
+                      ndvi: np.ndarray,
+                      ndsi: np.ndarray,
+                      modified_ndvi: np.ndarray,
+                      modified_ndsi: np.ndarray,
+                      whiteness: np.ndarray,
+                      water: np.ndarray) -> np.ndarray:
 
-        Args:
-            bands (np.ndarray): _description_
-            tif_file (str): _description_
 
-        Returns:
-            np.ndarray: _description_
-        """
-
-        B1 = bands[0]
-        B2 = bands[1]
-        B3 = bands[2]
-        B4 = bands[3]
-        B5 = bands[4]
-        B6 = bands[5]
-        B7 = bands[6]
-
-        ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
-        ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
-        bt = B6 - 273.15
-        print(bt, B6, B5)
-        whiteness = self.whiteness_test(B3, B2, B1)
-        water = self.water_test(ndvi, B7)
-
-        # Pass One
-        pcp = self.pass_one(b1=B1, b3=B3, b4=B4, b5=B5, b7=B7, bt=bt,
+        # Pass One to get potencial cloud pixels
+        pcp = self.pass_one(b1=b1, b3=b3, b4=b4,
+                            b5=b5, b7=b7, bt=bt,
                             ndvi=ndvi,
                             ndsi=ndsi,
                             whiteness=whiteness)
         
-        # Pass Two
-        pcl = self.pass_two(b5=B5,
-                      b7=B7,
+        # Pass Two returns potencial cloud layer
+        pcl = self.pass_two(b5=b5,
+                      b7=b7,
                       bt=bt,
                       pcp=pcp,
                       modified_ndvi=modified_ndvi,
                       modified_ndsi=modified_ndsi,
                       water_test=water,
                       whiteness=whiteness)
-
+        
         return pcl
 
-    def detect_shadows(self, bands, cloud_mask):
-       pass
+
+    def flood_fill_transformation(self, band: np.ndarray):        
+
+        # Normalizar a banda para o intervalo [0, 255]
+        band4_normalized = ((band - np.min(band)) / (np.max(band) - np.min(band)) * 255).astype(np.uint8)
+        normalized_image = Image.fromarray(band4_normalized)
+
+        # Inverter a imagem para que o flood-fill funcione corretamente (transformação morfológica)
+        inverted_image = Image.fromarray(255 - band4_normalized)
+
+        # Definir um ponto de partida fora da área de interesse (por exemplo, canto da imagem)
+        seed_point = (0, 0)
+
+        # Aplicar o flood-fill usando ImageDraw.floodfill
+        ImageDraw.floodfill(inverted_image, xy=seed_point, value=255, thresh=10)
+
+        # Inverter a imagem de volta ao original
+        filled_image = Image.fromarray(255 - np.array(inverted_image))
+
+        # Converter o resultado de volta para um array NumPy
+        result = np.maximum(band4_normalized, np.array(filled_image))
+
+        # Converter o resultado de volta para uma imagem PIL
+        result_image = Image.fromarray(result.astype(np.uint8))
+
+        return result_image
+
+    def detect_shadows(self, b4: np.ndarray):
+       flood_fill_b4 = self.flood_fill_transformation(b4)
+       # PCSL(Potential Cloud Shadow Layer) test       
+    #    return flood_fill_b4 - b4 > 0.02
+    #    print(b4.max())
+       return (flood_fill_b4 - b4 < 50)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -419,7 +439,7 @@ class Fmask():
             with rasterio.open(output_file, 'w', **profile) as dst:
                 dst.write(band, 1)
 
-    def save_plot(self, mask: np.ndarray, color_composite: np.ndarray, save_dir: str, name: str) -> None:
+    def save_plot(self, masks: list, color_composite: np.ndarray, save_dir: str, name: str) -> None:
         """ Save a plot contains mask with mask
 
         Args:
@@ -430,13 +450,15 @@ class Fmask():
         """
 
         fig = plt.figure(figsize=(25, 15))
+
+        fig = plt.figure(figsize=(25, 15))
         plt.subplot(1, 2, 1)
         plt.imshow(color_composite, interpolation='nearest', aspect='auto')
         plt.axis(False)
 
-        colors = ['white']
-        classes = ['Nuvem']
-        masked_image = overlay_masks(color_composite, mask,['Nuvem'], colors=colors)
+        colors = ['white', 'red']
+        classes = ['Nuvem', "Sombra de Nuvem"]
+        masked_image = overlay_masks(color_composite,  np.stack(masks, -1), classes, colors=colors)
 
         plt.subplot(1, 2, 2)
         plt.imshow(color_composite, interpolation='nearest', aspect='auto')
@@ -462,17 +484,46 @@ class Fmask():
             np.ndarray: Mask containing cloud segmentation(value 1) 
                         and cloud shadow (value 2) 
         """
-
+        # Open .tif
         bands = self.read_landsat_bands(tif_file)
-        cloud_mask = self.detect_clouds(bands)
-        # shadow_mask = self.detect_shadows(bands, cloud_mask)
 
-        fmask = np.zeros_like(cloud_mask, dtype=np.uint8)
-        # fmask = np.ones_like(cloud_mask, dtype=np.uint8)
-        fmask[cloud_mask] = 1
-        # fmask[shadow_mask] = 2
+        # Extract each band
+        B1 = bands[0]
+        B2 = bands[1]
+        B3 = bands[2]
+        B4 = bands[3]
+        B5 = bands[4]
+        B6 = bands[5]
+        B7 = bands[6]
 
-        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), fmask
+        # Calculation the necessary indices
+        ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
+        ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
+        bt = B6 - 273.15
+        whiteness = self.whiteness_test(B3, B2, B1)
+        water = self.water_test(ndvi, B7)
+
+        # Get cloud mask
+        cloud_mask = self.detect_clouds(b1=B1, b3=B3, 
+                                        b4=B4, b5=B5, 
+                                        b7=B7, bt=bt,
+                                        ndvi=ndvi,
+                                        ndsi=ndsi,
+                                        modified_ndvi=modified_ndvi,
+                                        modified_ndsi=modified_ndsi,
+                                        whiteness=whiteness,
+                                        water=water)
+        
+
+        # Get shadow cloud mask
+        shadow_mask = self.detect_shadows(B4)
+
+        # cloud_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
+        # shadow_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
+        # cloud_mask[cloud_mask] = 1
+        # shadow_mask[shadow_mask] = 1
+
+        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), cloud_mask, shadow_mask
 
 
 if __name__ == "__main__":
@@ -483,6 +534,7 @@ if __name__ == "__main__":
 
     inputs = [f"{root}/{img}" for img in os.listdir(root)]
     # inputs = ['./2004/seixas_20041124.tif']
+    # inputs = ['./2004/seixas_20040905.tif']
     save_dir = "./results/"
 
     # inputs = ['./seixas_20041124.tif']
@@ -492,7 +544,7 @@ if __name__ == "__main__":
 
     for inp in inputs:
         file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
-        color_composite, result = fmask.create_fmask(inp)
-        fmask.save_tif(result, inputs[0], './test.tif')
-        fmask.save_plot(result, color_composite, save_dir, name=file_name)
+        color_composite, cloud_mask, shadow_mask = fmask.create_fmask(inp)
+        # fmask.save_tif(result, inputs[0], './test.tif')
+        fmask.save_plot([cloud_mask, shadow_mask], color_composite, save_dir, name=file_name)
         # fmask.save(result, inp, file_name)
