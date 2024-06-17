@@ -72,12 +72,31 @@ class Fmask():
 
         b2_0_to_255 = np.max((b2 - np.min(b2)) / (np.max(b2) - np.min(b2)) * 255)
 
+        # Saturation test
         pixels_to_modify = (b2_0_to_255 == 255) & (b5 > b2)
 
         modified_ndsi[pixels_to_modify] = 0
 
 
         return ndsi, modified_ndsi
+
+    def calculate_ndwi(self,
+                       b3: np.ndarray,
+                       b5: np.ndarray) -> List[np.ndarray]:
+        
+        """Calculate the NDVI spectral indice by: nir-red/nir+red
+
+        Args:
+            b4 (np.ndarray): Nir band for landsat4-5 TM and landsat7 ETM
+            b3 (np.ndarray): Red band for landsat4-5 TM and landsat7 ETM
+
+        Returns:
+            List[np.ndarray]: A single band with the np.ndarray 
+        """
+
+        ndwi = (b3 - b5) / (b3 + b5)
+
+        return ndwi
 
     def calculate_brightness_temperature(self, band_thermal, k1, k2, to_celsius=False):
         radiance = band_thermal * 0.05518 + 1.2378  # Ajuste conforme necessário
@@ -417,12 +436,12 @@ class Fmask():
 
         return result_image
 
-    def detect_shadows(self, b4: np.ndarray):
+    def detect_shadows(self, b4: np.ndarray, water_test: np.ndarray):
        flood_fill_b4 = self.flood_fill_transformation(b4)
        # PCSL(Potential Cloud Shadow Layer) test       
     #    return flood_fill_b4 - b4 > 0.02
     #    print(b4.max())
-       return (flood_fill_b4 - b4 < 50)
+       return (flood_fill_b4 - b4 < 50) & np.logical_not(water_test)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -499,6 +518,7 @@ class Fmask():
         # Calculation the necessary indices
         ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
         ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
+        ndwi = self.calculate_ndwi(B3, B5)
         bt = B6 - 273.15
         whiteness = self.whiteness_test(B3, B2, B1)
         water = self.water_test(ndvi, B7)
@@ -516,13 +536,14 @@ class Fmask():
         
 
         # Get shadow cloud mask
-        shadow_mask = self.detect_shadows(B4)
+        shadow_mask = self.detect_shadows(B4, water_test=water)
 
         # cloud_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
         # shadow_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
         # cloud_mask[cloud_mask] = 1
         # shadow_mask[shadow_mask] = 1
 
+        # return ndwi, cloud_mask, shadow_mask
         return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), cloud_mask, shadow_mask
 
 
