@@ -475,8 +475,8 @@ class Fmask():
         plt.imshow(color_composite, interpolation='nearest', aspect='auto')
         plt.axis(False)
 
-        colors = ['white', 'red']
-        classes = ['Nuvem', "Sombra de Nuvem"]
+        colors = ['gold', 'red', 'blue']
+        classes = ['Nuvem', "Sombra de Nuvem", "Água"]
         masked_image = overlay_masks(color_composite,  np.stack(masks, -1), classes, colors=colors)
 
         plt.subplot(1, 2, 2)
@@ -521,7 +521,7 @@ class Fmask():
         ndwi = self.calculate_ndwi(B3, B5)
         bt = B6 - 273.15
         whiteness = self.whiteness_test(B3, B2, B1)
-        water = self.water_test(ndvi, B7)
+        water_test = self.water_test(ndvi, B7)
 
         # Get cloud mask
         cloud_mask = self.detect_clouds(b1=B1, b3=B3, 
@@ -532,11 +532,11 @@ class Fmask():
                                         modified_ndvi=modified_ndvi,
                                         modified_ndsi=modified_ndsi,
                                         whiteness=whiteness,
-                                        water=water)
+                                        water=water_test)
         
 
         # Get shadow cloud mask
-        shadow_mask = self.detect_shadows(B4, water_test=water)
+        shadow_mask = self.detect_shadows(B4, water_test=water_test)
 
         # cloud_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
         # shadow_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
@@ -544,7 +544,7 @@ class Fmask():
         # shadow_mask[shadow_mask] = 1
 
         # return ndwi, cloud_mask, shadow_mask
-        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), cloud_mask, shadow_mask
+        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), cloud_mask, shadow_mask, water_test
 
 
 if __name__ == "__main__":
@@ -565,7 +565,7 @@ if __name__ == "__main__":
 
     for inp in inputs:
         file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
-        color_composite, cloud_mask, shadow_mask = fmask.create_fmask(inp)
+        color_composite, cloud_mask, shadow_mask, water_mask = fmask.create_fmask(inp)
         # fmask.save_tif(result, inputs[0], './test.tif')
-        fmask.save_plot([cloud_mask, shadow_mask], color_composite, save_dir, name=file_name)
+        fmask.save_plot([cloud_mask, shadow_mask, water_mask], color_composite, save_dir, name=file_name)
         # fmask.save(result, inp, file_name)
