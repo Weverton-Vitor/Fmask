@@ -20,9 +20,6 @@ class Fmask():
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        # for b in bands:
-        #     print(b)
-
         # print("Bands: ", len(bands))
         return bands
 
@@ -307,10 +304,11 @@ class Fmask():
 
         # Eq. 15
         maximum = np.maximum(np.abs(modified_ndvi), np.abs(modified_ndsi))
-        variability_prob = 1 - np.maximum(maximum, whiteness)
+        # variability_prob = 1 - np.maximum(maximum, whiteness)
+        variability_prob = 1 - maximum
 
         # Eq. 16
-        l_cloud_prob = l_temperature_prob #* variability_prob
+        l_cloud_prob = l_temperature_prob * variability_prob
 
         return l_cloud_prob, t_low, t_high
 
@@ -353,7 +351,11 @@ class Fmask():
                                                            clear_sky_land=clear_sky_land)
         # Eq. 17
         land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
-
+        # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 10) #+ 0.2
+        # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
+        # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
+        print("Land threshold: ", land_threshold)
+        print("Land cloud prob: ", l_cloud_prob)
         # Eq. 18 
         # Clouds above water
         # pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
@@ -369,8 +371,13 @@ class Fmask():
         pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
         # pcl_3 = (l_cloud_prob > 0.99) & (water_test == False)
 
-        # 
+        # temperature test
         pcl_4 = bt < (t_low - 35)
+
+        # plt.figure()
+        # plt.subplot(1, 2, 1)
+        # plt.imshow(bt)
+        # plt.show()
 
         # pcl =  np.logical_or(np.logical_or(np.logical_or(pcl_1, pcl_2), pcl_3), pcl_4)
         pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
@@ -396,6 +403,7 @@ class Fmask():
                             ndvi=ndvi,
                             ndsi=ndsi,
                             whiteness=whiteness)
+        
         
         # Pass Two returns potencial cloud layer
         pcl = self.pass_two(b5=b5,
@@ -423,7 +431,7 @@ class Fmask():
         seed_point = (0, 0)
 
         # Aplicar o flood-fill usando ImageDraw.floodfill
-        ImageDraw.floodfill(inverted_image, xy=seed_point, value=255, thresh=10)
+        ImageDraw.floodfill(inverted_image, xy=seed_point, value=255, thresh=00)
 
         # Inverter a imagem de volta ao original
         filled_image = Image.fromarray(255 - np.array(inverted_image))
@@ -437,11 +445,15 @@ class Fmask():
         return result_image
 
     def detect_shadows(self, b4: np.ndarray, water_test: np.ndarray):
-       flood_fill_b4 = self.flood_fill_transformation(b4)
-       # PCSL(Potential Cloud Shadow Layer) test       
-    #    return flood_fill_b4 - b4 > 0.02
-    #    print(b4.max())
-       return (flood_fill_b4 - b4 < 50) & np.logical_not(water_test)
+        flood_fill_b4 = self.flood_fill_transformation(b4)
+        # PCSL(Potential Cloud Shadow Layer) test       
+        # return flood_fill_b4 - b4 > 0.02
+        # fig = plt.figure(figsize=(25, 15))
+        # plt.imshow(flood_fill_b4, cmap='gray')
+        # plt.title("Flood fill")
+        # plt.show()
+
+        return (flood_fill_b4 - b4 < 50) & np.logical_not(water_test)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -469,8 +481,6 @@ class Fmask():
         """
 
         fig = plt.figure(figsize=(25, 15))
-
-        fig = plt.figure(figsize=(25, 15))
         plt.subplot(1, 2, 1)
         plt.imshow(color_composite, interpolation='nearest', aspect='auto')
         plt.axis(False)
@@ -486,7 +496,7 @@ class Fmask():
 
         legend_elements = [Patch(facecolor=colors[i], edgecolor='black', label=f'{classes[i]}') for i in range(len(colors))]
 
-        plt.legend(handles=legend_elements, loc='upper left', fontsize=25)
+        plt.legend(handles=legend_elements, loc='upper right', fontsize=25)
         plt.axis(False)
 
         fig.savefig(save_dir+name, dpi=fig.dpi)
@@ -558,8 +568,8 @@ if __name__ == "__main__":
     # inputs = ['./2004/seixas_20040905.tif']
     save_dir = "./results/"
 
-    # inputs = ['./seixas_20041124.tif']
-    # save_dir = "./"
+    inputs = ['./seixas_20041124_complete.tif']
+    save_dir = "./"
     
     fmask = Fmask()
 
