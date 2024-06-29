@@ -1,13 +1,15 @@
+import json
 import rasterio
 import numpy as np
+from scipy.ndimage import label, center_of_mass
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 from typing import List
 from segmentation_mask_overlay import overlay_masks
 from matplotlib.patches import Patch
 
-class Fmask():
 
+class Fmask:
     def read_landsat_bands(self, tif_file: str) -> np.ndarray:
         """Read the tif file
 
@@ -20,13 +22,13 @@ class Fmask():
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        # print("Bands: ", len(bands))
-        return bands
+        with open(tif_file.replace(".tif", '.json'), 'r') as file:
+            metadata = json.load(file)
 
-    def calculate_ndvi(self,
-                       b4: np.ndarray,
-                       b3: np.ndarray) -> List[np.ndarray]:
-        
+        # print("Bands: ", len(bands))
+        return bands, metadata
+
+    def calculate_ndvi(self, b4: np.ndarray, b3: np.ndarray) -> List[np.ndarray]:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
@@ -34,7 +36,7 @@ class Fmask():
             b3 (np.ndarray): Red band for landsat4-5 TM and landsat7 ETM
 
         Returns:
-            List[np.ndarray]: A single band with the np.ndarray 
+            List[np.ndarray]: A single band with the np.ndarray
         """
 
         ndvi = (b4 - b3) / (b4 + b3)
@@ -49,10 +51,7 @@ class Fmask():
 
         return ndvi, modified_ndvi
 
-    def calculate_ndsi(self,
-                       b2: np.ndarray, 
-                       b5: np.ndarray) -> List[np.ndarray]:
-        
+    def calculate_ndsi(self, b2: np.ndarray, b5: np.ndarray) -> List[np.ndarray]:
         """_summary_
 
         Args:
@@ -74,13 +73,9 @@ class Fmask():
 
         modified_ndsi[pixels_to_modify] = 0
 
-
         return ndsi, modified_ndsi
 
-    def calculate_ndwi(self,
-                       b3: np.ndarray,
-                       b5: np.ndarray) -> List[np.ndarray]:
-        
+    def calculate_ndwi(self, b3: np.ndarray, b5: np.ndarray) -> List[np.ndarray]:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
@@ -88,7 +83,7 @@ class Fmask():
             b3 (np.ndarray): Red band for landsat4-5 TM and landsat7 ETM
 
         Returns:
-            List[np.ndarray]: A single band with the np.ndarray 
+            List[np.ndarray]: A single band with the np.ndarray
         """
 
         ndwi = (b3 - b5) / (b3 + b5)
@@ -125,10 +120,9 @@ class Fmask():
 
         return result
 
-    def calculate_mean_visible(self,
-                               b3: np.ndarray,
-                               b2: np.ndarray,
-                               b1: np.ndarray) -> np.ndarray:
+    def calculate_mean_visible(
+        self, b3: np.ndarray, b2: np.ndarray, b1: np.ndarray
+    ) -> np.ndarray:
         """_summary_
 
         Args:
@@ -142,10 +136,9 @@ class Fmask():
 
         return (b3 + b2 + b1) / 3
 
-    def whiteness_test(self,
-                       b3: np.ndarray,
-                       b2: np.ndarray,
-                       b1: np.ndarray) -> np.ndarray:
+    def whiteness_test(
+        self, b3: np.ndarray, b2: np.ndarray, b1: np.ndarray
+    ) -> np.ndarray:
         """_summary_
 
         Args:
@@ -164,7 +157,7 @@ class Fmask():
 
         for band in bands:
             # whiteness += np.abs(np.divide((np.subtract(band, mean_visible)), mean_visible))
-            whiteness += np.abs((band - mean_visible)/mean_visible)
+            whiteness += np.abs((band - mean_visible) / mean_visible)
 
         return whiteness < 0.7
 
@@ -200,17 +193,18 @@ class Fmask():
         # Eq. 4
         return np.divide(b4, b5) > 0.75
 
-    def pass_one(self,
-                 b1: np.ndarray,
-                 b3: np.ndarray,
-                 b4: np.ndarray,
-                 b5: np.ndarray,
-                 b7: np.ndarray,
-                 bt: np.ndarray,
-                 ndvi: np.ndarray,
-                 ndsi: np.ndarray,
-                 whiteness: np.ndarray):
-
+    def pass_one(
+        self,
+        b1: np.ndarray,
+        b3: np.ndarray,
+        b4: np.ndarray,
+        b5: np.ndarray,
+        b7: np.ndarray,
+        bt: np.ndarray,
+        ndvi: np.ndarray,
+        ndsi: np.ndarray,
+        whiteness: np.ndarray,
+    ):
         # Eq. 6
         pcp = np.logical_and(self.basic_test(b7, bt, ndvi, ndsi), whiteness)
         pcp = np.logical_and(pcp, self.hot_test(b1, b3))
@@ -230,17 +224,17 @@ class Fmask():
         """
 
         # Eq. 5
-        return np.logical_or(np.logical_and(ndvi < 0.01, b4 < 0.11),
-                             np.logical_and(ndvi < 0.1, b4 < 0.05))
+        return np.logical_or(
+            np.logical_and(ndvi < 0.01, b4 < 0.11),
+            np.logical_and(ndvi < 0.1, b4 < 0.05),
+        )
 
     def clear_sky_water_test(self, water_test: np.array, b7: np.ndarray) -> np.ndarray:
         return np.logical_and(water_test, b7 < 0.03)
 
-    def water_cloud_prob(self,
-                         water_test: np.ndarray,
-                         b5: np.ndarray,
-                         b7: np.ndarray,
-                         bt: np.ndarray) -> np.ndarray:
+    def water_cloud_prob(
+        self, water_test: np.ndarray, b5: np.ndarray, b7: np.ndarray, bt: np.ndarray
+    ) -> np.ndarray:
         """_summary_
 
         Args:
@@ -254,8 +248,7 @@ class Fmask():
         """
 
         # Eq. 7
-        clear_sky_water = self.clear_sky_water_test(
-            water_test=water_test, b7=b7)
+        clear_sky_water = self.clear_sky_water_test(water_test=water_test, b7=b7)
 
         # Eq. 8
         t_water = None
@@ -275,13 +268,14 @@ class Fmask():
 
         return w_cloud_prob
 
-    def land_cloud_prob(self,
-                        bt: np.ndarray,
-                        modified_ndvi: np.ndarray,
-                        modified_ndsi: np.ndarray,
-                        whiteness: np.ndarray,
-                        clear_sky_land: List[np.ndarray]):
-        
+    def land_cloud_prob(
+        self,
+        bt: np.ndarray,
+        modified_ndvi: np.ndarray,
+        modified_ndsi: np.ndarray,
+        whiteness: np.ndarray,
+        clear_sky_land: List[np.ndarray],
+    ):
         """_summary_
 
         Args:
@@ -296,15 +290,25 @@ class Fmask():
         """
 
         # Eq. 13
-        t_low = np.percentile(bt[clear_sky_land], 17.5)
-        t_high = np.percentile(bt[clear_sky_land], 82.5)
+        t_low = None
+        try:
+            t_low = np.percentile(bt[clear_sky_land], 17.5)
+        except:
+            t_low = 10
+
+        t_high = None
+        try:
+            t_high = np.percentile(bt[clear_sky_land], 82.5)
+        except:
+            t_high = 50
+
 
         # Eq. 14
         l_temperature_prob = (t_high + 4 - bt) / (t_high + 4 - (t_low - 4))
 
         # Eq. 15
         maximum = np.maximum(np.abs(modified_ndvi), np.abs(modified_ndsi))
-        # variability_prob = 1 - np.maximum(maximum, whiteness)
+        variability_prob = 1 - np.maximum(maximum, whiteness)
         variability_prob = 1 - maximum
 
         # Eq. 16
@@ -312,15 +316,17 @@ class Fmask():
 
         return l_cloud_prob, t_low, t_high
 
-    def pass_two(self, 
-                 b5: np.ndarray, 
-                 b7: np.ndarray, 
-                 bt: np.ndarray, 
-                 pcp: np.ndarray,                  
-                 modified_ndvi: np.ndarray,                  
-                 modified_ndsi: np.ndarray,                  
-                 water_test: np.ndarray, 
-                 whiteness: np.ndarray) -> np.ndarray:
+    def pass_two(
+        self,
+        b5: np.ndarray,
+        b7: np.ndarray,
+        bt: np.ndarray,
+        pcp: np.ndarray,
+        modified_ndvi: np.ndarray,
+        modified_ndsi: np.ndarray,
+        water_test: np.ndarray,
+        whiteness: np.ndarray,
+    ) -> np.ndarray:
         """_summary_
 
         Args:
@@ -335,28 +341,29 @@ class Fmask():
             np.ndarray: _description_
         """
 
-        w_cloud_prob = self.water_cloud_prob(water_test=water_test,
-                                             b5=b5,
-                                             b7=b7,
-                                             bt=bt)
+        w_cloud_prob = self.water_cloud_prob(water_test=water_test, b5=b5, b7=b7, bt=bt)
 
         # Eq. 12
         clear_sky_land = np.logical_not(pcp) & np.logical_not(water_test)
 
-
-        l_cloud_prob, t_low, t_high = self.land_cloud_prob(bt=bt,
-                                                           modified_ndvi=modified_ndvi,
-                                                           modified_ndsi=modified_ndsi,
-                                                           whiteness=whiteness,
-                                                           clear_sky_land=clear_sky_land)
+        l_cloud_prob, t_low, t_high = self.land_cloud_prob(
+            bt=bt,
+            modified_ndvi=modified_ndvi,
+            modified_ndsi=modified_ndsi,
+            whiteness=whiteness,
+            clear_sky_land=clear_sky_land,
+        )
         # Eq. 17
-        land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
+        land_threshold = None
+        try:
+            land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
+        except:
+            land_threshold = 0.3
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 10) #+ 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
         print("Land threshold: ", land_threshold)
-        print("Land cloud prob: ", l_cloud_prob)
-        # Eq. 18 
+        # Eq. 18
         # Clouds above water
         # pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
         pcl_1 = np.logical_and(pcp, water_test)
@@ -367,7 +374,7 @@ class Fmask():
         pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
         pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
 
-        # High land cloud probability 
+        # High land cloud probability
         pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
         # pcl_3 = (l_cloud_prob > 0.99) & (water_test == False)
 
@@ -383,45 +390,53 @@ class Fmask():
         pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
         return pcl
 
-    def detect_clouds(self, b1: np.ndarray,                     
-                      b3: np.ndarray,
-                      b4: np.ndarray,
-                      b5: np.ndarray,
-                      b7: np.ndarray,
-                      bt: np.ndarray,
-                      ndvi: np.ndarray,
-                      ndsi: np.ndarray,
-                      modified_ndvi: np.ndarray,
-                      modified_ndsi: np.ndarray,
-                      whiteness: np.ndarray,
-                      water: np.ndarray) -> np.ndarray:
-
-
+    def detect_clouds(
+        self,
+        b1: np.ndarray,
+        b3: np.ndarray,
+        b4: np.ndarray,
+        b5: np.ndarray,
+        b7: np.ndarray,
+        bt: np.ndarray,
+        ndvi: np.ndarray,
+        ndsi: np.ndarray,
+        modified_ndvi: np.ndarray,
+        modified_ndsi: np.ndarray,
+        whiteness: np.ndarray,
+        water: np.ndarray,
+    ) -> np.ndarray:
         # Pass One to get potencial cloud pixels
-        pcp = self.pass_one(b1=b1, b3=b3, b4=b4,
-                            b5=b5, b7=b7, bt=bt,
-                            ndvi=ndvi,
-                            ndsi=ndsi,
-                            whiteness=whiteness)
-        
-        
+        pcp = self.pass_one(
+            b1=b1,
+            b3=b3,
+            b4=b4,
+            b5=b5,
+            b7=b7,
+            bt=bt,
+            ndvi=ndvi,
+            ndsi=ndsi,
+            whiteness=whiteness,
+        )
+
         # Pass Two returns potencial cloud layer
-        pcl = self.pass_two(b5=b5,
-                      b7=b7,
-                      bt=bt,
-                      pcp=pcp,
-                      modified_ndvi=modified_ndvi,
-                      modified_ndsi=modified_ndsi,
-                      water_test=water,
-                      whiteness=whiteness)
-        
+        pcl = self.pass_two(
+            b5=b5,
+            b7=b7,
+            bt=bt,
+            pcp=pcp,
+            modified_ndvi=modified_ndvi,
+            modified_ndsi=modified_ndsi,
+            water_test=water,
+            whiteness=whiteness,
+        )
+
         return pcl
 
-
-    def flood_fill_transformation(self, band: np.ndarray):        
-
+    def flood_fill_transformation(self, band: np.ndarray):
         # Normalizar a banda para o intervalo [0, 255]
-        band4_normalized = ((band - np.min(band)) / (np.max(band) - np.min(band)) * 255).astype(np.uint8)
+        band4_normalized = (
+            (band - np.min(band)) / (np.max(band) - np.min(band)) * 255
+        ).astype(np.uint8)
         normalized_image = Image.fromarray(band4_normalized)
 
         # Inverter a imagem para que o flood-fill funcione corretamente (transformação morfológica)
@@ -446,14 +461,14 @@ class Fmask():
 
     def detect_shadows(self, b4: np.ndarray, water_test: np.ndarray):
         flood_fill_b4 = self.flood_fill_transformation(b4)
-        # PCSL(Potential Cloud Shadow Layer) test       
+        # PCSL(Potential Cloud Shadow Layer) test
         # return flood_fill_b4 - b4 > 0.02
         # fig = plt.figure(figsize=(25, 15))
-        # plt.imshow(flood_fill_b4, cmap='gray')
+        # plt.imshow((flood_fill_b4 - b4) < 120, cmap='gray')
         # plt.title("Flood fill")
         # plt.show()
 
-        return (flood_fill_b4 - b4 < 50) & np.logical_not(water_test)
+        return ((flood_fill_b4 - b4) < 50)  & np.logical_not(water_test)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -467,11 +482,13 @@ class Fmask():
         with rasterio.open(tif_file) as src:
             profile = src.profile
             profile.update(count=1)
-            with rasterio.open(output_file, 'w', **profile) as dst:
+            with rasterio.open(output_file, "w", **profile) as dst:
                 dst.write(band, 1)
 
-    def save_plot(self, masks: list, color_composite: np.ndarray, save_dir: str, name: str) -> None:
-        """ Save a plot contains mask with mask
+    def save_plot(
+        self, masks: list, color_composite: np.ndarray, save_dir: str, name: str
+    ) -> None:
+        """Save a plot contains mask with mask
 
         Args:
             mask (np.ndarray): Final mask
@@ -482,39 +499,113 @@ class Fmask():
 
         fig = plt.figure(figsize=(25, 15))
         plt.subplot(1, 2, 1)
-        plt.imshow(color_composite, interpolation='nearest', aspect='auto')
+        plt.imshow(color_composite, interpolation="nearest", aspect="auto")
         plt.axis(False)
 
-        colors = ['gold', 'red', 'blue']
-        classes = ['Nuvem', "Sombra de Nuvem", "Água"]
-        masked_image = overlay_masks(color_composite,  np.stack(masks, -1), classes, colors=colors)
+        colors = ["gold", "red", "blue"]
+        classes = ["Nuvem", "Sombra de Nuvem", "Água"]
+        masked_image = overlay_masks(
+            color_composite, np.stack(masks[:2], -1), classes[:2], colors=colors[:2]
+        )
 
         plt.subplot(1, 2, 2)
-        plt.imshow(color_composite, interpolation='nearest', aspect='auto')
-        plt.imshow(masked_image, alpha=1, interpolation='nearest', aspect='auto')
+        plt.imshow(color_composite, interpolation="nearest", aspect="auto")
+        plt.imshow(masked_image, alpha=1, interpolation="nearest", aspect="auto")
 
+        legend_elements = [
+            Patch(facecolor=colors[i], edgecolor="black", label=f"{classes[i]}")
+            for i in range(len(colors[:2]))
+        ]
 
-        legend_elements = [Patch(facecolor=colors[i], edgecolor='black', label=f'{classes[i]}') for i in range(len(colors))]
-
-        plt.legend(handles=legend_elements, loc='upper right', fontsize=25)
+        plt.legend(handles=legend_elements, loc="upper right", fontsize=25)
         plt.axis(False)
 
-        fig.savefig(save_dir+name, dpi=fig.dpi)
+        fig.savefig(save_dir + name, dpi=fig.dpi)
 
+    def separar_componentes(self, mask):
+        """
+        Separa uma máscara binária em várias máscaras, cada uma contendo um componente conectado.
+
+        Args:
+        - mask (np.ndarray): Máscara binária de entrada.
+
+        Returns:
+        - list of np.ndarray: Lista de máscaras binárias, cada uma contendo um componente conectado.
+        """
+        labeled_mask, num_features = label(mask)
+        masks_individuais = []
+
+        for i in range(1, num_features + 1):
+            # Cria uma máscara para o componente atual
+            componente_mask = (labeled_mask == i).astype(np.uint8)
+            masks_individuais.append(componente_mask)
+
+        return masks_individuais
+
+    def calcular_direcao_sombra(self, angulo_sol, azimute_sol):
+        direcao_x = np.cos(np.radians(angulo_sol)) * np.sin(np.radians(azimute_sol))
+        direcao_y = np.cos(np.radians(angulo_sol)) * np.cos(np.radians(azimute_sol))
+        return np.array([direcao_x, direcao_y])
+
+    def projetar_sombra(self, centro_nuvem, direcao_sombra, distancia_sombra):
+        return centro_nuvem + direcao_sombra * distancia_sombra
+
+    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, sun_elevation, sun_azimuth, h_cloud_base, h_cloud_top, shape, num_passos=1):
+        direcao_sombra = self.calcular_direcao_sombra(sun_elevation, sun_azimuth)
+        
+        # Máscaras zeradas para nuvens e sombras correspondentes
+        nuvens_correspondentes = np.zeros(shape, dtype=np.uint8)
+        sombras_correspondentes = np.zeros(shape, dtype=np.uint8)
+
+        # Alturas para considerar no intervalo
+        alturas = np.linspace(h_cloud_base, h_cloud_top, num=num_passos)
+
+        for nuvem in clouds:
+            centro_nuvem = center_of_mass(nuvem)
+
+            melhor_correspondencia = None
+            menor_distancia = float("inf")
+
+            for altura in alturas:
+                distancia_sombra = altura * np.tan(np.radians(sun_elevation))
+                projecao_sombra = self.projetar_sombra(
+                    centro_nuvem, direcao_sombra, distancia_sombra
+                )
+
+                for sombra in cloud_shadows:
+                    centro_sombra = center_of_mass(sombra)
+                    distancia = np.linalg.norm(
+                        np.array(centro_sombra) - np.array(projecao_sombra)
+                    )
+
+                    if distancia < menor_distancia:
+                        menor_distancia = distancia
+                        melhor_correspondencia = sombra
+
+            if melhor_correspondencia is not None:
+                # Adiciona a nuvem e a sombra correspondentes às máscaras finais
+                nuvens_correspondentes = np.logical_or(
+                    nuvens_correspondentes, nuvem
+                ).astype(np.uint8)
+                sombras_correspondentes = np.logical_or(
+                    sombras_correspondentes, melhor_correspondencia
+                ).astype(np.uint8)
+
+        return nuvens_correspondentes, sombras_correspondentes
 
     def create_fmask(self, tif_file: str) -> np.ndarray:
-        """Receives the landsat image and return the segmentation mask for 
+        """Receives the landsat image and return the segmentation mask for
            cloud and cloud shadow
 
         Args:
             tif_file (str): Path to .tif with the bands
 
         Returns:
-            np.ndarray: Mask containing cloud segmentation(value 1) 
-                        and cloud shadow (value 2) 
+            np.ndarray: Mask containing cloud segmentation(value 1)
+                        and cloud shadow (value 2)
         """
         # Open .tif
-        bands = self.read_landsat_bands(tif_file)
+        bands, metadata = self.read_landsat_bands(tif_file)
 
         # Extract each band
         B1 = bands[0]
@@ -534,48 +625,93 @@ class Fmask():
         water_test = self.water_test(ndvi, B7)
 
         # Get cloud mask
-        cloud_mask = self.detect_clouds(b1=B1, b3=B3, 
-                                        b4=B4, b5=B5, 
-                                        b7=B7, bt=bt,
-                                        ndvi=ndvi,
-                                        ndsi=ndsi,
-                                        modified_ndvi=modified_ndvi,
-                                        modified_ndsi=modified_ndsi,
-                                        whiteness=whiteness,
-                                        water=water_test)
-        
+        cloud_mask = self.detect_clouds(
+            b1=B1,
+            b3=B3,
+            b4=B4,
+            b5=B5,
+            b7=B7,
+            bt=bt,
+            ndvi=ndvi,
+            ndsi=ndsi,
+            modified_ndvi=modified_ndvi,
+            modified_ndsi=modified_ndsi,
+            whiteness=whiteness,
+            water=water_test,
+        )
 
         # Get shadow cloud mask
         shadow_mask = self.detect_shadows(B4, water_test=water_test)
 
-        # cloud_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
-        # shadow_mask = np.zeros_like(cloud_mask, dtype=np.uint8)
-        # cloud_mask[cloud_mask] = 1
-        # shadow_mask[shadow_mask] = 1
+        # Exemplo de uso
+        # Suponha que cloud_mask e shadow_mask sejam suas máscaras binárias de nuvens e sombras
+
+        # Máscaras de nuvens e sombras segmentadas
+        cloud_masks_individuais = self.separar_componentes(cloud_mask)
+        shadow_masks_individuais = self.separar_componentes(shadow_mask)
+
+        # Printando o número de nuvens e sombras encontradas
+        print(f"Número de nuvens encontradas: {len(cloud_masks_individuais)}")
+        print(f"Número de sombras encontradas: {len(shadow_masks_individuais)}")
+
+        # Exemplo de uso
+        # nuvens e sombras são listas de máscaras binárias (arrays numpy)
+        # shape é o formato das máscaras originais
+
+        altura_base = 200  # Altura mínima da nuvem em metros
+        altura_top = 24000
+        shape = B1.shape
+
+        # Separar componentes das máscaras binárias
+        cloud_masks_individuais = self.separar_componentes(cloud_mask)
+        shadow_masks_individuais = self.separar_componentes(shadow_mask)
+
+        # Encontrar correspondências e gerar máscaras finais
+        cloud_mask, shadow_mask = self.encontrar_correspondencia_intervalo_altura(
+            clouds=cloud_masks_individuais,
+            cloud_shadows=shadow_masks_individuais,
+            sun_elevation=metadata['properties']['SUN_ELEVATION'],
+            sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
+            h_cloud_base = altura_base,
+            h_cloud_top=altura_top,
+            shape=shape,
+        )
 
         # return ndwi, cloud_mask, shadow_mask
-        return np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]), cloud_mask, shadow_mask, water_test
+        return (
+            np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]),
+            cloud_mask,
+            shadow_mask,
+            water_test,
+        )
 
 
 if __name__ == "__main__":
     import os
 
     # root = './test_images'
-    root = './2004'
+    root = "./Seixas/TOA/2004"
 
-    inputs = [f"{root}/{img}" for img in os.listdir(root)]
+    inputs = [f"{root}/{img}" for img in os.listdir(root) if '.tif' in img]
     # inputs = ['./2004/seixas_20041124.tif']
     # inputs = ['./2004/seixas_20040905.tif']
+
     save_dir = "./results/"
 
-    inputs = ['./seixas_20041124_complete.tif']
-    save_dir = "./"
-    
+    # inputs = ['./Seixas/TOA/2004/seixas_20041007.tif']
+    # inputs = ['seixas_20041124.tif']
+    # save_dir = "./"
+
     fmask = Fmask()
 
     for inp in inputs:
         file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
         color_composite, cloud_mask, shadow_mask, water_mask = fmask.create_fmask(inp)
         # fmask.save_tif(result, inputs[0], './test.tif')
-        fmask.save_plot([cloud_mask, shadow_mask, water_mask], color_composite, save_dir, name=file_name)
+        fmask.save_plot(
+            [cloud_mask, shadow_mask, water_mask],
+            color_composite,
+            save_dir,
+            name=file_name,
+        )
         # fmask.save(result, inp, file_name)

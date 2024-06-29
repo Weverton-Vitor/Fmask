@@ -1,0 +1,339 @@
+{
+    "type": "Image",
+    "bands": [
+        {
+            "id": "B1",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B2",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B3",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B4",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B5",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B6",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        },
+        {
+            "id": "B7",
+            "data_type": {
+                "type": "PixelType",
+                "precision": "float"
+            },
+            "dimensions": [
+                7801,
+                6921
+            ],
+            "crs": "EPSG:32625",
+            "crs_transform": [
+                30,
+                0,
+                134685,
+                0,
+                -30,
+                -695985
+            ]
+        }
+    ],
+    "version": 1713486095116153,
+    "id": "LANDSAT/LT05/C02/T1_TOA/LT05_214065_20041210",
+    "properties": {
+        "RADIANCE_MULT_BAND_5": 0.12035,
+        "RADIANCE_MULT_BAND_6": 0.055375,
+        "IMAGE_QUALITY": 9,
+        "RADIANCE_MULT_BAND_3": 1.044,
+        "RADIANCE_MULT_BAND_4": 0.87602,
+        "RADIANCE_MULT_BAND_1": 0.76583,
+        "RADIANCE_MULT_BAND_2": 1.4482,
+        "WRS_TYPE": 2,
+        "K2_CONSTANT_BAND_6": 1260.56,
+        "CORRECTION_GAIN_BAND_2": "CPF",
+        "CORRECTION_GAIN_BAND_1": "CPF",
+        "system:footprint": {
+            "type": "LinearRing",
+            "coordinates": [
+                [
+                    -36.30985068429565,
+                    -7.789455867738934
+                ],
+                [
+                    -36.31192883787299,
+                    -7.79973136993154
+                ],
+                [
+                    -36.31276775812123,
+                    -7.905527937824774
+                ],
+                [
+                    -36.2775237015768,
+                    -7.910923717015128
+                ],
+                [
+                    -34.524751252059595,
+                    -8.168678458423802
+                ],
+                [
+                    -34.51508396912646,
+                    -8.161369781373665
+                ],
+                [
+                    -34.35100961509547,
+                    -7.39282662873646
+                ],
+                [
+                    -34.18761623543565,
+                    -6.623574947184424
+                ],
+                [
+                    -34.18746069951329,
+                    -6.558199548244338
+                ],
+                [
+                    -34.19603352659676,
+                    -6.554580273679679
+                ],
+                [
+                    -34.20473966351516,
+                    -6.551291408970803
+                ],
+                [
+                    -34.225109423206455,
+                    -6.548253277067004
+                ],
+                [
+                    -34.28775625554241,
+                    -6.539143004627716
+                ],
+                [
+                    -34.88337627919919,
+                    -6.452367095916071
+                ],
+                [
+                    -35.98424534103375,
+                    -6.290167994488806
+                ],
+                [
+                    -35.9899177823362,
+                    -6.316112398170191
+                ],
+                [
+                    -36.12074394502747,
+                    -6.920055612042951
+                ],
+                [
+                    -36.254893885125455,
+                    -7.536000636860955
+                ],
+                [
+                    -36.28599650753716,
+                    -7.679337674013085
+                ],
+                [
+                    -36.30985068429565,
+                    -7.789455867738934
+                ]
+            ]
+        },
+        "REFLECTIVE_SAMPLES": 7801,
+        "CORRECTION_GAIN_BAND_7": "CPF",
+        "CORRECTION_GAIN_BAND_6": "INTERNAL_CALIBRATION",
+        "CORRECTION_GAIN_BAND_5": "CPF",
+        "SUN_AZIMUTH": 122.02740571,
+        "CORRECTION_GAIN_BAND_4": "CPF",
+        "CORRECTION_GAIN_BAND_3": "CPF",
+        "DATE_ACQUIRED": "2004-12-10",
+        "ELLIPSOID": "WGS84",
+        "SENSOR_MODE": "BUMPER",
+        "STATION_ID": "CUB",
+        "RESAMPLING_OPTION": "CUBIC_CONVOLUTION",
+        "ORIENTATION": "NORTH_UP",
+        "WRS_ROW": 65,
+        "RADIANCE_MULT_BAND_7": 0.065551,
+        "CLOUD_COVER": 57,
+        "GEOMETRIC_RMSE_VERIFY": 0.367,
+        "COLLECTION_CATEGORY": "T1",
+        "GRID_CELL_SIZE_REFLECTIVE": 30,
+        "K1_CONSTANT_BAND_6": 607.76,
+        "CLOUD_COVER_LAND": 65,
+        "GEOMETRIC_RMSE_MODEL": 6.245,
+        "COLLECTION_NUMBER": 2,
+        "LANDSAT_SCENE_ID": "LT52140652004345CUB00",
+        "WRS_PATH": 214,
+        "MAP_PROJECTION_L0RA": "NA",
+        "GEOMETRIC_RMSE_MODEL_Y": 4.037,
+        "REFLECTIVE_LINES": 6921,
+        "GEOMETRIC_RMSE_MODEL_X": 4.765,
+        "system:asset_size": 262768729,
+        "system:index": "LT05_214065_20041210",
+        "GEOMETRIC_RMSE_VERIFY_QUAD_LL": 0,
+        "DATA_SOURCE_ELEVATION": "GLS2000",
+        "SENSOR_ANOMALIES": "NONE",
+        "GEOMETRIC_RMSE_VERIFY_QUAD_LR": 0.287,
+        "REFLECTANCE_ADD_BAND_1": -0.003582,
+        "REFLECTANCE_ADD_BAND_2": -0.007426,
+        "DATUM": "WGS84",
+        "REFLECTANCE_ADD_BAND_3": -0.004526,
+        "REFLECTANCE_ADD_BAND_4": -0.007036,
+        "REFLECTANCE_ADD_BAND_5": -0.007127,
+        "REFLECTANCE_ADD_BAND_7": -0.007984,
+        "GROUND_CONTROL_POINTS_VERSION": 5,
+        "GEOMETRIC_RMSE_VERIFY_QUAD_UL": 0.353,
+        "CORRECTION_BIAS_BAND_2": "CPF",
+        "CORRECTION_BIAS_BAND_1": "CPF",
+        "GEOMETRIC_RMSE_VERIFY_QUAD_UR": 0.499,
+        "CORRECTION_BIAS_BAND_4": "CPF",
+        "CORRECTION_BIAS_BAND_3": "CPF",
+        "DATA_TYPE_L0RP": "TMR_L0RP",
+        "UTM_ZONE": 25,
+        "system:time_end": 1102680880503,
+        "LANDSAT_PRODUCT_ID": "LT05_L1TP_214065_20041210_20200902_02_T1",
+        "RADIANCE_ADD_BAND_4": -2.38602,
+        "REFLECTANCE_MULT_BAND_7": 0.0024281,
+        "system:time_start": 1102680880503,
+        "RADIANCE_ADD_BAND_5": -0.49035,
+        "RADIANCE_ADD_BAND_6": 1.18243,
+        "PROCESSING_SOFTWARE_VERSION": "LPGS_15.3.1c",
+        "RADIANCE_ADD_BAND_7": -0.21555,
+        "EPHEMERIS_TYPE": "DEFINITIVE",
+        "RADIANCE_ADD_BAND_1": -2.28583,
+        "RADIANCE_ADD_BAND_2": -4.28819,
+        "RADIANCE_ADD_BAND_3": -2.21398,
+        "REFLECTANCE_MULT_BAND_1": 0.0012001,
+        "CORRECTION_BIAS_BAND_6": "CPF",
+        "REFLECTANCE_MULT_BAND_3": 0.0021344,
+        "CORRECTION_BIAS_BAND_5": "CPF",
+        "REFLECTANCE_MULT_BAND_2": 0.002508,
+        "REFLECTANCE_MULT_BAND_5": 0.0017492,
+        "CORRECTION_BIAS_BAND_7": "CPF",
+        "REFLECTANCE_MULT_BAND_4": 0.0025834,
+        "THERMAL_LINES": 6921,
+        "GRID_CELL_SIZE_THERMAL": 30,
+        "REQUEST_ID": "L2",
+        "EARTH_SUN_DISTANCE": 0.9847201,
+        "SCENE_CENTER_TIME": "12:14:40.5030940Z",
+        "SUN_ELEVATION": 57.28695972,
+        "DATE_PRODUCT_GENERATED": 1599084381000,
+        "SATURATION_BAND_1": "Y",
+        "SENSOR_MODE_SLC": "ON",
+        "SATURATION_BAND_2": "Y",
+        "SATURATION_BAND_3": "Y",
+        "SATURATION_BAND_4": "Y",
+        "SATURATION_BAND_5": "Y",
+        "MAP_PROJECTION": "UTM",
+        "SATURATION_BAND_6": "N",
+        "SENSOR_ID": "TM",
+        "SATURATION_BAND_7": "Y",
+        "PROCESSING_LEVEL": "L1TP",
+        "GROUND_CONTROL_POINTS_MODEL": 44,
+        "SPACECRAFT_ID": "LANDSAT_5",
+        "THERMAL_SAMPLES": 7801,
+        "GROUND_CONTROL_POINTS_VERIFY": 70
+    }
+}
