@@ -358,7 +358,7 @@ class Fmask:
         try:
             land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
         except:
-            land_threshold = 0
+            land_threshold = 0.3
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 10) #+ 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
