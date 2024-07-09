@@ -22,7 +22,7 @@ class Fmask:
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        with open(tif_file.replace(".tif", '.json'), 'r') as file:
+        with open(tif_file.replace(".tif", ".json"), "r") as file:
             metadata = json.load(file)
 
         # print("Bands: ", len(bands))
@@ -159,7 +159,7 @@ class Fmask:
             # whiteness += np.abs(np.divide((np.subtract(band, mean_visible)), mean_visible))
             whiteness += np.abs((band - mean_visible) / mean_visible)
 
-        return whiteness < 0.7
+        return whiteness, whiteness < 0.7
 
     def hot_test(self, b1: np.ndarray, b3: np.ndarray) -> np.ndarray:
         """_summary_
@@ -294,14 +294,13 @@ class Fmask:
         try:
             t_low = np.percentile(bt[clear_sky_land], 17.5)
         except:
-            t_low = 10
+            t_low = 30
 
         t_high = None
         try:
             t_high = np.percentile(bt[clear_sky_land], 82.5)
         except:
-            t_high = 50
-
+            t_high = 60
 
         # Eq. 14
         l_temperature_prob = (t_high + 4 - bt) / (t_high + 4 - (t_low - 4))
@@ -309,8 +308,7 @@ class Fmask:
         # Eq. 15
         maximum = np.maximum(np.abs(modified_ndvi), np.abs(modified_ndsi))
         variability_prob = 1 - np.maximum(maximum, whiteness)
-        variability_prob = 1 - maximum
-
+        # variability_prob = 1 - maximum
         # Eq. 16
         l_cloud_prob = l_temperature_prob * variability_prob
 
@@ -358,7 +356,7 @@ class Fmask:
         try:
             land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
         except:
-            land_threshold = 0.3
+            land_threshold = -1
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 10) #+ 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
@@ -402,6 +400,7 @@ class Fmask:
         ndsi: np.ndarray,
         modified_ndvi: np.ndarray,
         modified_ndsi: np.ndarray,
+        whiteness_test: np.ndarray,
         whiteness: np.ndarray,
         water: np.ndarray,
     ) -> np.ndarray:
@@ -415,7 +414,7 @@ class Fmask:
             bt=bt,
             ndvi=ndvi,
             ndsi=ndsi,
-            whiteness=whiteness,
+            whiteness=whiteness_test,
         )
 
         # Pass Two returns potencial cloud layer
@@ -464,11 +463,11 @@ class Fmask:
         # PCSL(Potential Cloud Shadow Layer) test
         # return flood_fill_b4 - b4 > 0.02
         # fig = plt.figure(figsize=(25, 15))
-        # plt.imshow((flood_fill_b4 - b4) < 120, cmap='gray')
+        # plt.imshow(((flood_fill_b4 - b4) < 50) & np.logical_not(water_test), cmap='gray')
         # plt.title("Flood fill")
         # plt.show()
 
-        return ((flood_fill_b4 - b4) < 50)  & np.logical_not(water_test)
+        return ((flood_fill_b4 - b4) < 10) & np.logical_not(water_test)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -536,62 +535,104 @@ class Fmask:
         masks_individuais = []
 
         for i in range(1, num_features + 1):
-            # Cria uma máscara para o componente atual
             componente_mask = (labeled_mask == i).astype(np.uint8)
             masks_individuais.append(componente_mask)
+            # plt.imshow(componente_mask)
+            # plt.show()
 
         return masks_individuais
 
-    def calcular_direcao_sombra(self, angulo_sol, azimute_sol):
-        direcao_x = np.cos(np.radians(angulo_sol)) * np.sin(np.radians(azimute_sol))
-        direcao_y = np.cos(np.radians(angulo_sol)) * np.cos(np.radians(azimute_sol))
-        return np.array([direcao_x, direcao_y])
+    def calcular_direcao_sombra(self, sza, saa, vza, vaa):
+        """
+        Calcula a direção da sombra para cada pixel.
 
-    def projetar_sombra(self, centro_nuvem, direcao_sombra, distancia_sombra):
-        return centro_nuvem + direcao_sombra * distancia_sombra
+        Args:
+        - sza (np.ndarray): Mapa do ângulo zenital do sol em radianos.
+        - saa (np.ndarray): Mapa do ângulo azimutal do sol em radianos.
+        - vza (np.ndarray): Mapa do ângulo zenital de visualização em radianos.
+        - vaa (np.ndarray): Mapa do ângulo azimutal de visualização em radianos.
 
-    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, sun_elevation, sun_azimuth, h_cloud_base, h_cloud_top, shape, num_passos=1):
-        direcao_sombra = self.calcular_direcao_sombra(sun_elevation, sun_azimuth)
-        
-        # Máscaras zeradas para nuvens e sombras correspondentes
-        nuvens_correspondentes = np.zeros(shape, dtype=np.uint8)
+        Returns:
+        - np.ndarray: Matriz de direções da sombra com shape (altura, largura, 2).
+        """
+        direcao_x = np.tan(vza) * np.sin(vaa - saa)
+        direcao_y = np.tan(vza) * np.cos(vaa - saa)
+        return np.stack([direcao_x, direcao_y], axis=-1)
+
+    def projetar_sombra(self, nuvem, direcao_sombra, distancia_sombra, shape):
+        """
+        Projeta a sombra da nuvem na imagem.
+
+        Args:
+        - nuvem (np.ndarray): Máscara binária da nuvem.
+        - direcao_sombra (np.ndarray): Matriz de direções da sombra com shape (altura, largura, 2).
+        - distancia_sombra (float): Distância da sombra em pixels.
+        - shape (tuple): Forma da imagem (altura, largura).
+
+        Returns:
+        - np.ndarray: Máscara binária da sombra projetada.
+        """
+        projecao_sombra = np.zeros(shape, dtype=np.uint8)
+        pixels_nuvem = np.argwhere(nuvem)
+
+        for pixel in pixels_nuvem:
+            y, x = pixel
+            dy, dx = direcao_sombra[y, x] * distancia_sombra
+            y_proj = int(round(y + dy))
+            x_proj = int(round(x + dx))
+
+            if 0 <= y_proj < shape[0] and 0 <= x_proj < shape[1]:
+                projecao_sombra[y_proj, x_proj] = 1
+
+        # plt.imshow(projecao_sombra)
+        # plt.show()
+        return projecao_sombra
+
+    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, vza_map, vaa_map, saa_map, sza_map, h_cloud_base, h_cloud_top, shape, num_passos=10):
+        """
+        Encontra a correspondência de sombras de nuvens para um intervalo de alturas.
+
+        Args:
+        - clouds (list of np.ndarray): Lista de máscaras binárias de nuvens.
+        - cloud_shadows (list of np.ndarray): Lista de máscaras binárias de sombras de nuvens.
+        - vza_map (np.ndarray): Mapa do ângulo zenital de visualização.
+        - vaa_map (np.ndarray): Mapa do ângulo azimutal de visualização.
+        - saa_map (np.ndarray): Mapa do ângulo azimutal do sol.
+        - sza_map (np.ndarray): Mapa do ângulo zenital do sol.
+        - h_cloud_base (float): Altura mínima da nuvem em metros.
+        - h_cloud_top (float): Altura máxima da nuvem em metros.
+        - shape (tuple): Forma das imagens de entrada (altura, largura).
+        - num_passos (int): Número de passos para discretizar o intervalo de alturas.
+
+        Returns:
+        - np.ndarray: Máscara binária das sombras correspondentes.
+        """
+        # Converter ângulos para radianos
+        vza_map = np.radians(vza_map)
+        vaa_map = np.radians(vaa_map)
+        saa_map = np.radians(saa_map)
+        sza_map = np.radians(sza_map)
+
+        # Máscaras zeradas para sombras correspondentes
         sombras_correspondentes = np.zeros(shape, dtype=np.uint8)
 
         # Alturas para considerar no intervalo
         alturas = np.linspace(h_cloud_base, h_cloud_top, num=num_passos)
 
+        direcao_sombra = self.calcular_direcao_sombra(sza_map, saa_map, vza_map, vaa_map)
+
         for nuvem in clouds:
-            centro_nuvem = center_of_mass(nuvem)
-
-            melhor_correspondencia = None
-            menor_distancia = float("inf")
-
             for altura in alturas:
-                distancia_sombra = altura * np.tan(np.radians(sun_elevation))
-                projecao_sombra = self.projetar_sombra(
-                    centro_nuvem, direcao_sombra, distancia_sombra
-                )
+                distancia_sombra = altura * np.tan(sza_map.mean())  # Aproximação usando o ângulo zenital do sol médio
+                projecao_sombra = self.projetar_sombra(nuvem, direcao_sombra, distancia_sombra, shape)
 
                 for sombra in cloud_shadows:
-                    centro_sombra = center_of_mass(sombra)
-                    distancia = np.linalg.norm(
-                        np.array(centro_sombra) - np.array(projecao_sombra)
-                    )
+                    interseccao = np.sum(projecao_sombra & sombra)
 
-                    if distancia < menor_distancia:
-                        menor_distancia = distancia
-                        melhor_correspondencia = sombra
+                    if interseccao > 0:
+                        sombras_correspondentes = np.logical_or(sombras_correspondentes, sombra).astype(np.uint8)
 
-            if melhor_correspondencia is not None:
-                # Adiciona a nuvem e a sombra correspondentes às máscaras finais
-                nuvens_correspondentes = np.logical_or(
-                    nuvens_correspondentes, nuvem
-                ).astype(np.uint8)
-                sombras_correspondentes = np.logical_or(
-                    sombras_correspondentes, melhor_correspondencia
-                ).astype(np.uint8)
-
-        return nuvens_correspondentes, sombras_correspondentes
+        return sombras_correspondentes
 
     def create_fmask(self, tif_file: str) -> np.ndarray:
         """Receives the landsat image and return the segmentation mask for
@@ -616,12 +657,18 @@ class Fmask:
         B6 = bands[5]
         B7 = bands[6]
 
+        saa_band = bands[9]
+        sza_band = bands[10]
+        vaa_band = bands[11]
+        vza_band = bands[12]
+
+
         # Calculation the necessary indices
         ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
         ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
         ndwi = self.calculate_ndwi(B3, B5)
         bt = B6 - 273.15
-        whiteness = self.whiteness_test(B3, B2, B1)
+        whiteness, whiteness_test = self.whiteness_test(B3, B2, B1)
         water_test = self.water_test(ndvi, B7)
 
         # Get cloud mask
@@ -637,6 +684,7 @@ class Fmask:
             modified_ndvi=modified_ndvi,
             modified_ndsi=modified_ndsi,
             whiteness=whiteness,
+            whiteness_test=whiteness_test,
             water=water_test,
         )
 
@@ -659,23 +707,23 @@ class Fmask:
         # shape é o formato das máscaras originais
 
         altura_base = 200  # Altura mínima da nuvem em metros
-        altura_top = 24000
+        altura_top = 1200
         shape = B1.shape
 
-        # Separar componentes das máscaras binárias
-        cloud_masks_individuais = self.separar_componentes(cloud_mask)
-        shadow_masks_individuais = self.separar_componentes(shadow_mask)
-
         # Encontrar correspondências e gerar máscaras finais
-        cloud_mask, shadow_mask = self.encontrar_correspondencia_intervalo_altura(
-            clouds=cloud_masks_individuais,
-            cloud_shadows=shadow_masks_individuais,
-            sun_elevation=metadata['properties']['SUN_ELEVATION'],
-            sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
-            h_cloud_base = altura_base,
-            h_cloud_top=altura_top,
-            shape=shape,
-        )
+        # shadow_mask1 = self.encontrar_correspondencia_intervalo_altura(
+        #     clouds=cloud_masks_individuais,
+        #     cloud_shadows=shadow_masks_individuais,
+        #     vza_map=vza_band,
+        #     vaa_map=vaa_band,
+        #     saa_map=saa_band,
+        #     sza_map=sza_band,
+        #     # sun_elevation=metadata['properties']['SUN_ELEVATION'],
+        #     # sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
+        #     h_cloud_base=altura_base,
+        #     h_cloud_top=altura_top,
+        #     shape=shape,
+        # )
 
         # return ndwi, cloud_mask, shadow_mask
         return (
@@ -692,7 +740,7 @@ if __name__ == "__main__":
     # root = './test_images'
     root = "./Seixas/TOA/2004"
 
-    inputs = [f"{root}/{img}" for img in os.listdir(root) if '.tif' in img]
+    inputs = [f"{root}/{img}" for img in os.listdir(root) if ".tif" in img]
     # inputs = ['./2004/seixas_20041124.tif']
     # inputs = ['./2004/seixas_20040905.tif']
 
