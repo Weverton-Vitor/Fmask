@@ -159,7 +159,7 @@ class Fmask:
             # whiteness += np.abs(np.divide((np.subtract(band, mean_visible)), mean_visible))
             whiteness += np.abs((band - mean_visible) / mean_visible)
 
-        return whiteness, whiteness < 0.7
+        return whiteness, whiteness < 0.8
 
     def hot_test(self, b1: np.ndarray, b3: np.ndarray) -> np.ndarray:
         """_summary_
@@ -203,11 +203,15 @@ class Fmask:
         bt: np.ndarray,
         ndvi: np.ndarray,
         ndsi: np.ndarray,
-        whiteness: np.ndarray,
+        whiteness_test: np.ndarray,
     ):
+        # plt.figure()
+        # plt.imshow(whiteness_test)
+        # plt.show()
+    
         # Eq. 6
-        pcp = np.logical_and(self.basic_test(b7, bt, ndvi, ndsi), whiteness)
-        pcp = np.logical_and(pcp, self.hot_test(b1, b3))
+        pcp = np.logical_and(self.basic_test(b7, bt, ndvi, ndsi), whiteness_test)
+        # pcp = np.logical_and(pcp, self.hot_test(b1, b3))
         pcp = np.logical_and(pcp, self.b4_over_b5_test(b4, b5))
 
         return pcp
@@ -290,13 +294,11 @@ class Fmask:
         """
 
         # Eq. 13
-        t_low = None
         try:
             t_low = np.percentile(bt[clear_sky_land], 17.5)
         except:
-            t_low = 30
+            t_low = 20
 
-        t_high = None
         try:
             t_high = np.percentile(bt[clear_sky_land], 82.5)
         except:
@@ -351,12 +353,11 @@ class Fmask:
             whiteness=whiteness,
             clear_sky_land=clear_sky_land,
         )
-        # Eq. 17
-        land_threshold = None
+        # Eq. 17 Problem here
         try:
             land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
         except:
-            land_threshold = -1
+            land_threshold = 0.5
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 10) #+ 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
@@ -370,7 +371,15 @@ class Fmask:
         # Clouds above land
         # pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
         pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
-        pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
+        pcl_2 = np.logical_and(pcl_2, w_cloud_prob > land_threshold)
+
+
+        # plt.figure()
+        # plt.subplot(1, 2, 1)
+        # plt.imshow(l_cloud_prob > land_threshold)
+        # plt.subplot(1, 2, 2)
+        # plt.imshow(w_cloud_prob, cmap="rainbow")
+        # plt.show()
 
         # High land cloud probability
         pcl_3 = np.logical_and(l_cloud_prob > 0.99, np.logical_not(water_test))
@@ -414,7 +423,7 @@ class Fmask:
             bt=bt,
             ndvi=ndvi,
             ndsi=ndsi,
-            whiteness=whiteness_test,
+            whiteness_test=whiteness_test,
         )
 
         # Pass Two returns potencial cloud layer
@@ -454,20 +463,21 @@ class Fmask:
         result = np.maximum(band4_normalized, np.array(filled_image))
 
         # Converter o resultado de volta para uma imagem PIL
-        result_image = Image.fromarray(result.astype(np.uint8))
+        result_image = Image.fromarray(result.astype(np.uint8)//255)
 
         return result_image
 
     def detect_shadows(self, b4: np.ndarray, water_test: np.ndarray):
-        flood_fill_b4 = self.flood_fill_transformation(b4)
+        flood_fill_b4 = self.flood_fill_transformation(b4)        
         # PCSL(Potential Cloud Shadow Layer) test
-        # return flood_fill_b4 - b4 > 0.02
+
+        return (flood_fill_b4 - b4 > - 0.18) & np.logical_not(water_test)
         # fig = plt.figure(figsize=(25, 15))
         # plt.imshow(((flood_fill_b4 - b4) < 50) & np.logical_not(water_test), cmap='gray')
         # plt.title("Flood fill")
         # plt.show()
 
-        return ((flood_fill_b4 - b4) < 10) & np.logical_not(water_test)
+        # return ((flood_fill_b4 - b4) < 25) & np.logical_not(water_test)
 
     def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
@@ -504,7 +514,7 @@ class Fmask:
         colors = ["gold", "red", "blue"]
         classes = ["Nuvem", "Sombra de Nuvem", "Água"]
         masked_image = overlay_masks(
-            color_composite, np.stack(masks[:2], -1), classes[:2], colors=colors[:2]
+            color_composite, np.stack(masks, -1), classes, colors=colors
         )
 
         plt.subplot(1, 2, 2)
@@ -513,7 +523,7 @@ class Fmask:
 
         legend_elements = [
             Patch(facecolor=colors[i], edgecolor="black", label=f"{classes[i]}")
-            for i in range(len(colors[:2]))
+            for i in range(len(colors))
         ]
 
         plt.legend(handles=legend_elements, loc="upper right", fontsize=25)
@@ -711,7 +721,7 @@ class Fmask:
         shape = B1.shape
 
         # Encontrar correspondências e gerar máscaras finais
-        # shadow_mask1 = self.encontrar_correspondencia_intervalo_altura(
+        # shadow_mask = self.encontrar_correspondencia_intervalo_altura(
         #     clouds=cloud_masks_individuais,
         #     cloud_shadows=shadow_masks_individuais,
         #     vza_map=vza_band,
@@ -725,12 +735,13 @@ class Fmask:
         #     shape=shape,
         # )
 
+        water_mask = np.logical_and(ndwi, water_test)
         # return ndwi, cloud_mask, shadow_mask
         return (
             np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]),
             cloud_mask,
             shadow_mask,
-            water_test,
+            ndwi,
         )
 
 
@@ -746,7 +757,7 @@ if __name__ == "__main__":
 
     save_dir = "./results/"
 
-    # inputs = ['./Seixas/TOA/2004/seixas_20041007.tif']
+    # inputs = ['./Seixas/TOA/2004/seixas_20040313.tif']
     # inputs = ['seixas_20041124.tif']
     # save_dir = "./"
 
