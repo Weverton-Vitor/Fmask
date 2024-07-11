@@ -471,7 +471,7 @@ class Fmask:
         flood_fill_b4 = self.flood_fill_transformation(b4)        
         # PCSL(Potential Cloud Shadow Layer) test
 
-        return (flood_fill_b4 - b4 > - 0.18) & np.logical_not(water_test)
+        return (flood_fill_b4 - b4 > -0.22) & np.logical_not(water_test)
         # fig = plt.figure(figsize=(25, 15))
         # plt.imshow(((flood_fill_b4 - b4) < 50) & np.logical_not(water_test), cmap='gray')
         # plt.title("Flood fill")
@@ -534,10 +534,8 @@ class Fmask:
     def separar_componentes(self, mask):
         """
         Separa uma máscara binária em várias máscaras, cada uma contendo um componente conectado.
-
         Args:
         - mask (np.ndarray): Máscara binária de entrada.
-
         Returns:
         - list of np.ndarray: Lista de máscaras binárias, cada uma contendo um componente conectado.
         """
@@ -547,38 +545,30 @@ class Fmask:
         for i in range(1, num_features + 1):
             componente_mask = (labeled_mask == i).astype(np.uint8)
             masks_individuais.append(componente_mask)
-            # plt.imshow(componente_mask)
-            # plt.show()
 
         return masks_individuais
 
-    def calcular_direcao_sombra(self, sza, saa, vza, vaa):
+    def calcular_direcao_sombra(self, sza, saa):
         """
-        Calcula a direção da sombra para cada pixel.
-
+        Calcula a direção da sombra com base nos ângulos solares.
         Args:
         - sza (np.ndarray): Mapa do ângulo zenital do sol em radianos.
         - saa (np.ndarray): Mapa do ângulo azimutal do sol em radianos.
-        - vza (np.ndarray): Mapa do ângulo zenital de visualização em radianos.
-        - vaa (np.ndarray): Mapa do ângulo azimutal de visualização em radianos.
-
         Returns:
         - np.ndarray: Matriz de direções da sombra com shape (altura, largura, 2).
         """
-        direcao_x = np.tan(vza) * np.sin(vaa - saa)
-        direcao_y = np.tan(vza) * np.cos(vaa - saa)
+        direcao_x = -np.sin(saa)
+        direcao_y = -np.cos(saa)
         return np.stack([direcao_x, direcao_y], axis=-1)
 
     def projetar_sombra(self, nuvem, direcao_sombra, distancia_sombra, shape):
         """
         Projeta a sombra da nuvem na imagem.
-
         Args:
         - nuvem (np.ndarray): Máscara binária da nuvem.
         - direcao_sombra (np.ndarray): Matriz de direções da sombra com shape (altura, largura, 2).
         - distancia_sombra (float): Distância da sombra em pixels.
         - shape (tuple): Forma da imagem (altura, largura).
-
         Returns:
         - np.ndarray: Máscara binária da sombra projetada.
         """
@@ -594,32 +584,40 @@ class Fmask:
             if 0 <= y_proj < shape[0] and 0 <= x_proj < shape[1]:
                 projecao_sombra[y_proj, x_proj] = 1
 
-        # plt.imshow(projecao_sombra)
-        # plt.show()
         return projecao_sombra
 
-    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, vza_map, vaa_map, saa_map, sza_map, h_cloud_base, h_cloud_top, shape, num_passos=10):
+    def calcular_similaridade(self, projecao_sombra, sombra_real):
+        """
+        Calcula a similaridade entre a projeção da sombra e a sombra real.
+        Args:
+        - projecao_sombra (np.ndarray): Máscara binária da sombra projetada.
+        - sombra_real (np.ndarray): Máscara binária da sombra real.
+        Returns:
+        - float: Similaridade entre a projeção da sombra e a sombra real.
+        """
+        interseccao = np.sum(projecao_sombra & sombra_real)
+        area_projecao = np.sum(projecao_sombra)
+        if area_projecao == 0:
+            return 0
+        return interseccao / area_projecao
+
+    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, saa_map, sza_map, h_cloud_base, h_cloud_top, shape, num_passos=10, limiar_similaridade=0.2):
         """
         Encontra a correspondência de sombras de nuvens para um intervalo de alturas.
-
         Args:
         - clouds (list of np.ndarray): Lista de máscaras binárias de nuvens.
         - cloud_shadows (list of np.ndarray): Lista de máscaras binárias de sombras de nuvens.
-        - vza_map (np.ndarray): Mapa do ângulo zenital de visualização.
-        - vaa_map (np.ndarray): Mapa do ângulo azimutal de visualização.
-        - saa_map (np.ndarray): Mapa do ângulo azimutal do sol.
-        - sza_map (np.ndarray): Mapa do ângulo zenital do sol.
+        - saa_map (np.ndarray): Mapa do ângulo azimutal do sol em radianos.
+        - sza_map (np.ndarray): Mapa do ângulo zenital do sol em radianos.
         - h_cloud_base (float): Altura mínima da nuvem em metros.
         - h_cloud_top (float): Altura máxima da nuvem em metros.
         - shape (tuple): Forma das imagens de entrada (altura, largura).
         - num_passos (int): Número de passos para discretizar o intervalo de alturas.
-
+        - limiar_similaridade (float): Limiar de similaridade para correspondência de sombra.
         Returns:
         - np.ndarray: Máscara binária das sombras correspondentes.
         """
         # Converter ângulos para radianos
-        vza_map = np.radians(vza_map)
-        vaa_map = np.radians(vaa_map)
         saa_map = np.radians(saa_map)
         sza_map = np.radians(sza_map)
 
@@ -629,19 +627,41 @@ class Fmask:
         # Alturas para considerar no intervalo
         alturas = np.linspace(h_cloud_base, h_cloud_top, num=num_passos)
 
-        direcao_sombra = self.calcular_direcao_sombra(sza_map, saa_map, vza_map, vaa_map)
+        direcao_sombra = self.calcular_direcao_sombra(sza_map, saa_map)
 
         for nuvem in clouds:
+            melhor_similaridade = 0
+            melhor_sombra = None
+
             for altura in alturas:
+                print(altura)
                 distancia_sombra = altura * np.tan(sza_map.mean())  # Aproximação usando o ângulo zenital do sol médio
                 projecao_sombra = self.projetar_sombra(nuvem, direcao_sombra, distancia_sombra, shape)
 
+                # plt.figure()
+                # plt.imshow(projecao_sombra)
+                # plt.show()
+                if np.max(projecao_sombra) == 0:
+                    continue
+
+
                 for sombra in cloud_shadows:
-                    interseccao = np.sum(projecao_sombra & sombra)
+                    similaridade = self.calcular_similaridade(projecao_sombra, sombra)
+                    if similaridade == 0:
+                        continue
 
-                    if interseccao > 0:
-                        sombras_correspondentes = np.logical_or(sombras_correspondentes, sombra).astype(np.uint8)
+                    if similaridade > melhor_similaridade:
+                        melhor_similaridade = similaridade
+                        melhor_sombra = sombra
 
+                # print("best: ", melhor_similaridade, "limiar: ", limiar_similaridade)
+                if melhor_similaridade >= limiar_similaridade:
+                    # print('add')
+                    sombras_correspondentes = np.logical_or(sombras_correspondentes, melhor_sombra).astype(np.uint8)
+                    # plt.figure()
+                    # plt.imshow(sombras_correspondentes)
+                    # plt.show()
+                # print("")
         return sombras_correspondentes
 
     def create_fmask(self, tif_file: str) -> np.ndarray:
@@ -721,19 +741,17 @@ class Fmask:
         shape = B1.shape
 
         # Encontrar correspondências e gerar máscaras finais
-        # shadow_mask = self.encontrar_correspondencia_intervalo_altura(
-        #     clouds=cloud_masks_individuais,
-        #     cloud_shadows=shadow_masks_individuais,
-        #     vza_map=vza_band,
-        #     vaa_map=vaa_band,
-        #     saa_map=saa_band,
-        #     sza_map=sza_band,
-        #     # sun_elevation=metadata['properties']['SUN_ELEVATION'],
-        #     # sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
-        #     h_cloud_base=altura_base,
-        #     h_cloud_top=altura_top,
-        #     shape=shape,
-        # )
+        shadow_mask = self.encontrar_correspondencia_intervalo_altura(
+            clouds=cloud_masks_individuais,
+            cloud_shadows=shadow_masks_individuais,
+            saa_map=saa_band,
+            sza_map=sza_band,
+            # sun_elevation=metadata['properties']['SUN_ELEVATION'],
+            # sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
+            h_cloud_base=altura_base,
+            h_cloud_top=altura_top,
+            shape=shape,
+        )
 
         water_mask = np.logical_and(ndwi, water_test)
         # return ndwi, cloud_mask, shadow_mask
@@ -757,7 +775,8 @@ if __name__ == "__main__":
 
     save_dir = "./results/"
 
-    # inputs = ['./Seixas/TOA/2004/seixas_20040313.tif']
+    # inputs = ['./Seixas_big_picture/TOA/2004/seixas_20040414.tif']
+    # inputs = ['./Seixas/TOA/2004/seixas_20040905.tif']
     # inputs = ['seixas_20041124.tif']
     # save_dir = "./"
 
