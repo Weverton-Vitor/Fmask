@@ -1,8 +1,12 @@
 /venv/
 /*.tif
+/*.xml
 /*.png
+/*.json
 /*.tif.aux.xml
 /.ruff_cache
 /*.zip
 /Seixas
 /Seixas_split/
+/results
+/results_big_picture
