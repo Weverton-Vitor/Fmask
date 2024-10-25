@@ -22,71 +22,76 @@ class Fmask:
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        with open(tif_file.replace(".tif", ".json"), "r") as file:
-            metadata = json.load(file)
-
         # print("Bands: ", len(bands))
-        return bands, metadata
+        return bands
 
-    def calculate_ndvi(self, b4: np.ndarray, b3: np.ndarray) -> List[np.ndarray]:
+    def calculate_ndvi(self, red: np.ndarray, nir: np.ndarray) -> List[np.ndarray]:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
-            b4 (np.ndarray): Nir band for landsat4-5 TM and landsat7 ETM
-            b3 (np.ndarray): Red band for landsat4-5 TM and landsat7 ETM
+            NIR (np.ndarray): Nir band, Lansat 5 TM: ; Lansat 7 ETM+ : ; Sentinel 2:  
+            Red (np.ndarray): Red band
 
         Returns:
             List[np.ndarray]: A single band with the np.ndarray
         """
+        
 
-        ndvi = (b4 - b3) / (b4 + b3)
+        ndvi = (nir - red) / (nir + red)
 
         modified_ndvi = ndvi.copy()
 
-        b3_0_to_255 = np.max((b3 - np.min(b3)) / (np.max(b3) - np.min(b3)) * 255)
+        b3_0_to_255 = np.max((nir - np.min(nir)) / (np.max(nir) - np.min(nir)) * 255)
 
-        pixels_to_modify = (b3_0_to_255 == 255) & (b4 > b3)
+        pixels_to_modify = (b3_0_to_255 == 255) & (red > nir)
 
         modified_ndvi[pixels_to_modify] = 0
+        
+        # plt.figure()
+        # plt.imshow(ndvi, cmap='Greens')
+        # plt.show()
 
         return ndvi, modified_ndvi
 
-    def calculate_ndsi(self, b2: np.ndarray, b5: np.ndarray) -> List[np.ndarray]:
+    def calculate_ndsi(self, green: np.ndarray, swir1: np.ndarray) -> List[np.ndarray]:
         """_summary_
 
         Args:
-            b2 (np.ndarray): _description_
-            b5 (np.ndarray): _description_
+            green (np.ndarray): _description_
+            swir1 (np.ndarray): _description_
 
         Returns:
             np.ndarray: _description_
         """
 
-        ndsi = (b2 - b5) / (b2 + b5)
+        ndsi = (green - swir1) / (green + swir1)
 
         modified_ndsi = ndsi.copy()
 
-        b2_0_to_255 = np.max((b2 - np.min(b2)) / (np.max(b2) - np.min(b2)) * 255)
+        b2_0_to_255 = np.max((green - np.min(green)) / (np.max(green) - np.min(green)) * 255)
 
         # Saturation test
-        pixels_to_modify = (b2_0_to_255 == 255) & (b5 > b2)
+        pixels_to_modify = (b2_0_to_255 == 255) & (swir1 > green)
 
         modified_ndsi[pixels_to_modify] = 0
 
         return ndsi, modified_ndsi
 
-    def calculate_ndwi(self, b3: np.ndarray, b5: np.ndarray) -> List[np.ndarray]:
+    def calculate_ndwi(self, green: np.ndarray, nir: np.ndarray) -> List[np.ndarray]:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
-            b4 (np.ndarray): Nir band for landsat4-5 TM and landsat7 ETM
-            b3 (np.ndarray): Red band for landsat4-5 TM and landsat7 ETM
+            green (np.ndarray): Red band ->  landsat4-5 TM: ; landsat7 ETM: 
+            nir (np.ndarray): NIR baand ->  landsat4-5 TM: ; landsat7 ETM: 
 
         Returns:
             List[np.ndarray]: A single band with the np.ndarray
-        """
+        """      
+        
 
-        ndwi = (b3 - b5) / (b3 + b5)
+        ndwi = (green - nir) / (green + nir)
+        
+      
 
         return ndwi
 
@@ -121,7 +126,7 @@ class Fmask:
         return result
 
     def calculate_mean_visible(
-        self, b3: np.ndarray, b2: np.ndarray, b1: np.ndarray
+        self, red: np.ndarray, green: np.ndarray, blue: np.ndarray
     ) -> np.ndarray:
         """_summary_
 
@@ -134,10 +139,10 @@ class Fmask:
             np.ndarray: _description_
         """
 
-        return (b3 + b2 + b1) / 3
+        return (red + green + blue) / 3
 
     def whiteness_test(
-        self, b3: np.ndarray, b2: np.ndarray, b1: np.ndarray
+        self, red: np.ndarray, green: np.ndarray, blue: np.ndarray
     ) -> np.ndarray:
         """_summary_
 
@@ -151,10 +156,10 @@ class Fmask:
         """
 
         # Eq. 2
-        bands = np.array([b3, b2, b1])
-        mean_visible = self.calculate_mean_visible(b3, b2, b1)
-        whiteness = np.zeros_like(b3)
-
+        bands = np.array([red, green, blue]).astype(np.float64)
+        mean_visible = self.calculate_mean_visible(red, green, blue).astype(np.float64)
+        whiteness = np.zeros_like(red).astype(np.float64)
+        
         for band in bands:
             # whiteness += np.abs(np.divide((np.subtract(band, mean_visible)), mean_visible))
             whiteness += np.abs((band - mean_visible) / mean_visible)
@@ -211,12 +216,13 @@ class Fmask:
     
         # Eq. 6
         pcp = np.logical_and(self.basic_test(b7, bt, ndvi, ndsi), whiteness_test)
+        
         # pcp = np.logical_and(pcp, self.hot_test(b1, b3))
         pcp = np.logical_and(pcp, self.b4_over_b5_test(b4, b5))
 
         return pcp
 
-    def water_test(self, ndvi: np.ndarray, b4: np.ndarray) -> np.ndarray:
+    def water_test(self, ndvi: np.ndarray, nir: np.ndarray) -> np.ndarray:
         """_summary_
 
         Args:
@@ -229,8 +235,8 @@ class Fmask:
 
         # Eq. 5
         return np.logical_or(
-            np.logical_and(ndvi < 0.01, b4 < 0.11),
-            np.logical_and(ndvi < 0.1, b4 < 0.05),
+            np.logical_and(ndvi < 0.01, nir < 0.11),
+            np.logical_and(ndvi < 0.1, nir < 0.05),
         )
 
     def clear_sky_water_test(self, water_test: np.array, b7: np.ndarray) -> np.ndarray:
@@ -399,11 +405,11 @@ class Fmask:
 
     def detect_clouds(
         self,
-        b1: np.ndarray,
-        b3: np.ndarray,
-        b4: np.ndarray,
-        b5: np.ndarray,
-        b7: np.ndarray,
+        blue: np.ndarray,
+        red: np.ndarray,
+        nir: np.ndarray,
+        swir1: np.ndarray,
+        swir2: np.ndarray,
         bt: np.ndarray,
         ndvi: np.ndarray,
         ndsi: np.ndarray,
@@ -415,30 +421,34 @@ class Fmask:
     ) -> np.ndarray:
         # Pass One to get potencial cloud pixels
         pcp = self.pass_one(
-            b1=b1,
-            b3=b3,
-            b4=b4,
-            b5=b5,
-            b7=b7,
+            b1=blue,
+            b3=red,
+            b4=nir,
+            b5=swir1,
+            b7=swir2,
             bt=bt,
             ndvi=ndvi,
             ndsi=ndsi,
             whiteness_test=whiteness_test,
         )
-
+        
+        plt.figure(figsize=(10, 7))
+        plt.imshow(pcp)
+        plt.axis("Off")
+        plt.show()
         # Pass Two returns potencial cloud layer
-        pcl = self.pass_two(
-            b5=b5,
-            b7=b7,
-            bt=bt,
-            pcp=pcp,
-            modified_ndvi=modified_ndvi,
-            modified_ndsi=modified_ndsi,
-            water_test=water,
-            whiteness=whiteness,
-        )
+        # pcl = self.pass_two(
+        #     b5=b5,
+        #     b7=b7,
+        #     bt=bt,
+        #     pcp=pcp,
+        #     modified_ndvi=modified_ndvi,
+        #     modified_ndsi=modified_ndsi,
+        #     water_test=water,
+        #     whiteness=whiteness,
+        # )
 
-        return pcl
+        return pcp
 
     def flood_fill_transformation(self, band: np.ndarray):
         # Normalizar a banda para o intervalo [0, 255]
@@ -676,38 +686,58 @@ class Fmask:
                         and cloud shadow (value 2)
         """
         # Open .tif
-        bands, metadata = self.read_landsat_bands(tif_file)
+        bands = self.read_landsat_bands(tif_file)
 
-        # Extract each band
-        B1 = bands[0]
-        B2 = bands[1]
-        B3 = bands[2]
-        B4 = bands[3]
-        B5 = bands[4]
-        B6 = bands[5]
-        B7 = bands[6]
+        # # Extract each band landsat
+        # B1 = bands[0]
+        # B2 = bands[1]
+        # B3 = bands[2]
+        # B4 = bands[3]
+        # B5 = bands[4]
+        # B6 = bands[5]
+        # B7 = bands[6]
+        # saa_band = bands[9]
+        # sza_band = bands[10]
+        # vaa_band = bands[11]
+        # vza_band = bands[12]
+        
+         # Extract each band landsat
+        B2 = bands[0] # Blue
+        B3 = bands[1] # Green
+        B4 = bands[2] # Red
+        B8 = bands[3] # NIR
+        B11 = bands[4] #
+        B12 = bands[5] #
+        
+        # rgb = [B4/np.max(B4), B3/np.max(B3), B2/np.max(B2)]
+        
+        # rgb = np.transpose(np.stack(rgb), axes=[1, 2, 0])
+        
+        # plt.figure()
+        # plt.imshow(rgb)
+        # plt.show()
+        
 
-        saa_band = bands[9]
-        sza_band = bands[10]
-        vaa_band = bands[11]
-        vza_band = bands[12]
+        # Calculate the necessary indices
+        ndvi, modified_ndvi = self.calculate_ndvi(red=B4, nir=B8)
+        ndwi = self.calculate_ndwi(green=B3, nir=B8)
+        
 
-
-        # Calculation the necessary indices
-        ndvi, modified_ndvi = self.calculate_ndvi(B4, B3)
-        ndsi, modified_ndsi = self.calculate_ndsi(B2, B5)
-        ndwi = self.calculate_ndwi(B3, B5)
-        bt = B6 - 273.15
-        whiteness, whiteness_test = self.whiteness_test(B3, B2, B1)
-        water_test = self.water_test(ndvi, B7)
+        print(np.max(ndwi))
+        print(np.min(ndwi))
+ 
+        ndsi, modified_ndsi = self.calculate_ndsi(green=B3, swir1=B11)
+        bt = B11 - 273.15
+        whiteness, whiteness_test = self.whiteness_test(red=B4, green=B3, blue=B2)
+        water_test = self.water_test(ndvi=ndvi, nir=B8)
 
         # Get cloud mask
         cloud_mask = self.detect_clouds(
-            b1=B1,
-            b3=B3,
-            b4=B4,
-            b5=B5,
-            b7=B7,
+            blue=B2,
+            red=B4,
+            nir=B8,
+            swir1=B11,
+            swir2=B12,
             bt=bt,
             ndvi=ndvi,
             ndsi=ndsi,
@@ -741,17 +771,17 @@ class Fmask:
         shape = B1.shape
 
         # Encontrar correspondências e gerar máscaras finais
-        shadow_mask = self.encontrar_correspondencia_intervalo_altura(
-            clouds=cloud_masks_individuais,
-            cloud_shadows=shadow_masks_individuais,
-            saa_map=saa_band,
-            sza_map=sza_band,
-            # sun_elevation=metadata['properties']['SUN_ELEVATION'],
-            # sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
-            h_cloud_base=altura_base,
-            h_cloud_top=altura_top,
-            shape=shape,
-        )
+        # shadow_mask = self.encontrar_correspondencia_intervalo_altura(
+        #     clouds=cloud_masks_individuais,
+        #     cloud_shadows=shadow_masks_individuais,
+        #     saa_map=saa_band,
+        #     sza_map=sza_band,
+        #     # sun_elevation=metadata['properties']['SUN_ELEVATION'],
+        #     # sun_azimuth=metadata['properties']['SUN_AZIMUTH'],
+        #     h_cloud_base=altura_base,
+        #     h_cloud_top=altura_top,
+        #     shape=shape,
+        # )
 
         water_mask = np.logical_and(ndwi, water_test)
         # return ndwi, cloud_mask, shadow_mask
@@ -767,7 +797,7 @@ if __name__ == "__main__":
     import os
 
     # root = './test_images'
-    root = "./Seixas/TOA/2004"
+    root = "./sentinel_scene/6B"
 
     inputs = [f"{root}/{img}" for img in os.listdir(root) if ".tif" in img]
     # inputs = ['./2004/seixas_20041124.tif']
