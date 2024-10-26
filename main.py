@@ -1,7 +1,6 @@
-import json
 import rasterio
 import numpy as np
-from scipy.ndimage import label, center_of_mass
+from scipy.ndimage import label
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 from typing import List
@@ -22,20 +21,18 @@ class Fmask:
         with rasterio.open(tif_file) as src:
             bands = src.read()
 
-        # print("Bands: ", len(bands))
         return bands
 
     def calculate_ndvi(self, red: np.ndarray, nir: np.ndarray) -> List[np.ndarray]:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
-            NIR (np.ndarray): Nir band, Lansat 5 TM: ; Lansat 7 ETM+ : ; Sentinel 2:  
+            NIR (np.ndarray): Nir band, Lansat 5 TM: ; Lansat 7 ETM+ : ; Sentinel 2:
             Red (np.ndarray): Red band
 
         Returns:
             List[np.ndarray]: A single band with the np.ndarray
         """
-        
 
         ndvi = (nir - red) / (nir + red)
 
@@ -46,7 +43,7 @@ class Fmask:
         pixels_to_modify = (b3_0_to_255 == 255) & (red > nir)
 
         modified_ndvi[pixels_to_modify] = 0
-        
+
         # plt.figure()
         # plt.imshow(ndvi, cmap='Greens')
         # plt.show()
@@ -68,7 +65,9 @@ class Fmask:
 
         modified_ndsi = ndsi.copy()
 
-        b2_0_to_255 = np.max((green - np.min(green)) / (np.max(green) - np.min(green)) * 255)
+        b2_0_to_255 = np.max(
+            (green - np.min(green)) / (np.max(green) - np.min(green)) * 255
+        )
 
         # Saturation test
         pixels_to_modify = (b2_0_to_255 == 255) & (swir1 > green)
@@ -81,17 +80,14 @@ class Fmask:
         """Calculate the NDVI spectral indice by: nir-red/nir+red
 
         Args:
-            green (np.ndarray): Red band ->  landsat4-5 TM: ; landsat7 ETM: 
-            nir (np.ndarray): NIR baand ->  landsat4-5 TM: ; landsat7 ETM: 
+            green (np.ndarray): Red band ->  landsat4-5 TM: ; landsat7 ETM:
+            nir (np.ndarray): NIR baand ->  landsat4-5 TM: ; landsat7 ETM:
 
         Returns:
             List[np.ndarray]: A single band with the np.ndarray
-        """      
-        
+        """
 
         ndwi = (green - nir) / (green + nir)
-        
-      
 
         return ndwi
 
@@ -104,7 +100,7 @@ class Fmask:
         else:
             return bt_kelvin
 
-    def basic_test(self, b7, bt, ndvi, ndsi) -> np.ndarray:
+    def basic_test(self, swir2, bt, ndvi, ndsi) -> np.ndarray:
         """_summary_
 
         Args:
@@ -119,7 +115,7 @@ class Fmask:
 
         # Eq. 1
         # bt = calculate_brightness_temperature(b6, 607.76, 1260.56, to_celsius=True)
-        result = np.logical_and(b7 > 0.03, bt < 27)
+        result = np.logical_and(swir2 > 0.03, bt < 27)
         result = np.logical_and(result, ndvi < 0.8)
         result = np.logical_and(result, ndsi < 0.8)
 
@@ -159,14 +155,14 @@ class Fmask:
         bands = np.array([red, green, blue]).astype(np.float64)
         mean_visible = self.calculate_mean_visible(red, green, blue).astype(np.float64)
         whiteness = np.zeros_like(red).astype(np.float64)
-        
+
         for band in bands:
             # whiteness += np.abs(np.divide((np.subtract(band, mean_visible)), mean_visible))
             whiteness += np.abs((band - mean_visible) / mean_visible)
 
         return whiteness, whiteness < 0.8
 
-    def hot_test(self, b1: np.ndarray, b3: np.ndarray) -> np.ndarray:
+    def hot_test(self, blue: np.ndarray, red: np.ndarray) -> np.ndarray:
         """_summary_
 
         Args:
@@ -179,12 +175,12 @@ class Fmask:
 
         # Eq. 3
         # return np.multiply(np.subtract(b1, 0.5), np.subtract(b3, 0.08)) > 0
-        b3 = 0.5 * b3
-        hot_test = b1 - b3 - 0.08
+        red = 0.5 * red
+        hot_test = blue - red - 0.08
         hot_test = hot_test > 0
         return hot_test
 
-    def b4_over_b5_test(self, b4: np.ndarray, b5: np.ndarray) -> np.ndarray:
+    def b4_over_b5_test(self, nir: np.ndarray, swir1: np.ndarray) -> np.ndarray:
         """_summary_
 
         Args:
@@ -196,15 +192,15 @@ class Fmask:
         """
 
         # Eq. 4
-        return np.divide(b4, b5) > 0.75
+        return np.divide(nir, swir1) > 0.75
 
     def pass_one(
         self,
-        b1: np.ndarray,
-        b3: np.ndarray,
-        b4: np.ndarray,
-        b5: np.ndarray,
-        b7: np.ndarray,
+        blue: np.ndarray,
+        red: np.ndarray,
+        nir: np.ndarray,
+        swir1: np.ndarray,
+        swir2: np.ndarray,
         bt: np.ndarray,
         ndvi: np.ndarray,
         ndsi: np.ndarray,
@@ -213,12 +209,12 @@ class Fmask:
         # plt.figure()
         # plt.imshow(whiteness_test)
         # plt.show()
-    
+
         # Eq. 6
-        pcp = np.logical_and(self.basic_test(b7, bt, ndvi, ndsi), whiteness_test)
-        
-        # pcp = np.logical_and(pcp, self.hot_test(b1, b3))
-        pcp = np.logical_and(pcp, self.b4_over_b5_test(b4, b5))
+        pcp = np.logical_and(self.basic_test(swir2, bt, ndvi, ndsi), whiteness_test)
+
+        pcp = np.logical_and(pcp, self.hot_test(blue, red))
+        pcp = np.logical_and(pcp, self.b4_over_b5_test(nir, swir1))
 
         return pcp
 
@@ -233,6 +229,16 @@ class Fmask:
             np.ndarray: _description_
         """
 
+        # plt.figure()
+        # plt.imshow(
+        #     np.logical_or(
+        #         np.logical_and(ndvi < 0.01, nir < 0.11),
+        #         np.logical_and(ndvi < 0.1, nir < 0.05),
+        #     )
+        # )
+        # plt.axis("off")
+        # plt.show()
+
         # Eq. 5
         return np.logical_or(
             np.logical_and(ndvi < 0.01, nir < 0.11),
@@ -243,7 +249,11 @@ class Fmask:
         return np.logical_and(water_test, b7 < 0.03)
 
     def water_cloud_prob(
-        self, water_test: np.ndarray, b5: np.ndarray, b7: np.ndarray, bt: np.ndarray
+        self,
+        water_test: np.ndarray,
+        swir1: np.ndarray,
+        swir2: np.ndarray,
+        bt: np.ndarray,
     ) -> np.ndarray:
         """_summary_
 
@@ -258,7 +268,7 @@ class Fmask:
         """
 
         # Eq. 7
-        clear_sky_water = self.clear_sky_water_test(water_test=water_test, b7=b7)
+        clear_sky_water = self.clear_sky_water_test(water_test=water_test, b7=swir2)
 
         # Eq. 8
         t_water = None
@@ -271,7 +281,7 @@ class Fmask:
         w_temperature_prob = (t_water - bt) / 4
 
         # Eq. 10
-        brightness_prob = np.minimum(b5, 0.11) / 0.11
+        brightness_prob = np.minimum(swir1, 0.11) / 0.11
 
         # Eq. 11
         w_cloud_prob = w_temperature_prob * brightness_prob
@@ -324,8 +334,8 @@ class Fmask:
 
     def pass_two(
         self,
-        b5: np.ndarray,
-        b7: np.ndarray,
+        swir1: np.ndarray,
+        swir2: np.ndarray,
         bt: np.ndarray,
         pcp: np.ndarray,
         modified_ndvi: np.ndarray,
@@ -347,7 +357,9 @@ class Fmask:
             np.ndarray: _description_
         """
 
-        w_cloud_prob = self.water_cloud_prob(water_test=water_test, b5=b5, b7=b7, bt=bt)
+        w_cloud_prob = self.water_cloud_prob(
+            water_test=water_test, swir1=swir1, swir2=swir2, bt=bt
+        )
 
         # Eq. 12
         clear_sky_land = np.logical_not(pcp) & np.logical_not(water_test)
@@ -378,7 +390,6 @@ class Fmask:
         # pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
         pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
         pcl_2 = np.logical_and(pcl_2, w_cloud_prob > land_threshold)
-
 
         # plt.figure()
         # plt.subplot(1, 2, 1)
@@ -421,25 +432,21 @@ class Fmask:
     ) -> np.ndarray:
         # Pass One to get potencial cloud pixels
         pcp = self.pass_one(
-            b1=blue,
-            b3=red,
-            b4=nir,
-            b5=swir1,
-            b7=swir2,
+            blue=blue,
+            red=red,
+            nir=nir,
+            swir1=swir1,
+            swir2=swir2,
             bt=bt,
             ndvi=ndvi,
             ndsi=ndsi,
             whiteness_test=whiteness_test,
         )
-        
-        plt.figure(figsize=(10, 7))
-        plt.imshow(pcp)
-        plt.axis("Off")
-        plt.show()
+
         # Pass Two returns potencial cloud layer
         # pcl = self.pass_two(
-        #     b5=b5,
-        #     b7=b7,
+        #     swir1=swir1,
+        #     swir2=swir1,
         #     bt=bt,
         #     pcp=pcp,
         #     modified_ndvi=modified_ndvi,
@@ -473,23 +480,27 @@ class Fmask:
         result = np.maximum(band4_normalized, np.array(filled_image))
 
         # Converter o resultado de volta para uma imagem PIL
-        result_image = Image.fromarray(result.astype(np.uint8)//255)
+        result_image = Image.fromarray(result.astype(np.uint8) // 255)
 
         return result_image
 
-    def detect_shadows(self, b4: np.ndarray, water_test: np.ndarray):
-        flood_fill_b4 = self.flood_fill_transformation(b4)        
+    def detect_shadows(self, nir: np.ndarray, water_test: np.ndarray):
+        flood_fill_nir = self.flood_fill_transformation(nir)
         # PCSL(Potential Cloud Shadow Layer) test
 
-        return (flood_fill_b4 - b4 > -0.22) & np.logical_not(water_test)
-        # fig = plt.figure(figsize=(25, 15))
-        # plt.imshow(((flood_fill_b4 - b4) < 50) & np.logical_not(water_test), cmap='gray')
-        # plt.title("Flood fill")
-        # plt.show()
+        plt.figure(figsize=(25, 15))
+        plt.imshow(
+            # ((flood_fill_nir - nir) < -0.25) & np.logical_not(water_test), cmap="gray"
+            ((flood_fill_nir - nir) < -0.25) & np.logical_not(water_test),
+            cmap="gray",
+        )
+        plt.title("Flood fill")
+        plt.show()
 
+        return (flood_fill_nir - nir < -0.25) & np.logical_not(water_test)
         # return ((flood_fill_b4 - b4) < 25) & np.logical_not(water_test)
 
-    def save_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
+    def save_one_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
         """_summary_
 
         Args:
@@ -503,6 +514,34 @@ class Fmask:
             profile.update(count=1)
             with rasterio.open(output_file, "w", **profile) as dst:
                 dst.write(band, 1)
+
+    def save_mask_tif(
+        self,
+        cloud_mask: np.ndarray,
+        cloud_shadow_mask: np.ndarray,
+        water_mask: np.ndarray,
+        original_tif_file: str,
+        output_file: str,
+    ) -> None:
+        """_summary_
+
+        Args:
+            band (np.ndarray): _description_
+            tif_file (str): _description_
+            output_file (str): _description_
+        """
+
+        mask_final = np.zeros_like(cloud_mask).astype(np.int8)
+
+        # mask_final[cloud_shadow_mask] = 2
+        mask_final[cloud_mask] = 1
+        mask_final[water_mask] = 3
+
+        with rasterio.open(original_tif_file) as src:
+            profile = src.profile
+            profile.update(count=1)
+            with rasterio.open(output_file, "w", **profile) as dst:
+                dst.write(mask_final, 1)
 
     def save_plot(
         self, masks: list, color_composite: np.ndarray, save_dir: str, name: str
@@ -538,6 +577,8 @@ class Fmask:
 
         plt.legend(handles=legend_elements, loc="upper right", fontsize=25)
         plt.axis(False)
+
+        os.makedirs(save_dir, exist_ok=True)
 
         fig.savefig(save_dir + name, dpi=fig.dpi)
 
@@ -611,7 +652,18 @@ class Fmask:
             return 0
         return interseccao / area_projecao
 
-    def encontrar_correspondencia_intervalo_altura(self, clouds, cloud_shadows, saa_map, sza_map, h_cloud_base, h_cloud_top, shape, num_passos=10, limiar_similaridade=0.2):
+    def encontrar_correspondencia_intervalo_altura(
+        self,
+        clouds,
+        cloud_shadows,
+        saa_map,
+        sza_map,
+        h_cloud_base,
+        h_cloud_top,
+        shape,
+        num_passos=10,
+        limiar_similaridade=0.2,
+    ):
         """
         Encontra a correspondência de sombras de nuvens para um intervalo de alturas.
         Args:
@@ -645,15 +697,18 @@ class Fmask:
 
             for altura in alturas:
                 print(altura)
-                distancia_sombra = altura * np.tan(sza_map.mean())  # Aproximação usando o ângulo zenital do sol médio
-                projecao_sombra = self.projetar_sombra(nuvem, direcao_sombra, distancia_sombra, shape)
+                distancia_sombra = altura * np.tan(
+                    sza_map.mean()
+                )  # Aproximação usando o ângulo zenital do sol médio
+                projecao_sombra = self.projetar_sombra(
+                    nuvem, direcao_sombra, distancia_sombra, shape
+                )
 
                 # plt.figure()
                 # plt.imshow(projecao_sombra)
                 # plt.show()
                 if np.max(projecao_sombra) == 0:
                     continue
-
 
                 for sombra in cloud_shadows:
                     similaridade = self.calcular_similaridade(projecao_sombra, sombra)
@@ -667,7 +722,9 @@ class Fmask:
                 # print("best: ", melhor_similaridade, "limiar: ", limiar_similaridade)
                 if melhor_similaridade >= limiar_similaridade:
                     # print('add')
-                    sombras_correspondentes = np.logical_or(sombras_correspondentes, melhor_sombra).astype(np.uint8)
+                    sombras_correspondentes = np.logical_or(
+                        sombras_correspondentes, melhor_sombra
+                    ).astype(np.uint8)
                     # plt.figure()
                     # plt.imshow(sombras_correspondentes)
                     # plt.show()
@@ -700,34 +757,32 @@ class Fmask:
         # sza_band = bands[10]
         # vaa_band = bands[11]
         # vza_band = bands[12]
-        
-         # Extract each band landsat
-        B2 = bands[0] # Blue
-        B3 = bands[1] # Green
-        B4 = bands[2] # Red
-        B8 = bands[3] # NIR
-        B11 = bands[4] #
-        B12 = bands[5] #
-        
+
+        # Extract each band landsat
+        B2 = bands[0]  # Blue
+        B3 = bands[1]  # Green
+        B4 = bands[2]  # Red
+        B8 = bands[3]  # NIR
+        B11 = bands[4]  #
+        B12 = bands[5]  #
+
         # rgb = [B4/np.max(B4), B3/np.max(B3), B2/np.max(B2)]
-        
+
         # rgb = np.transpose(np.stack(rgb), axes=[1, 2, 0])
-        
+
         # plt.figure()
         # plt.imshow(rgb)
         # plt.show()
-        
 
         # Calculate the necessary indices
         ndvi, modified_ndvi = self.calculate_ndvi(red=B4, nir=B8)
         ndwi = self.calculate_ndwi(green=B3, nir=B8)
-        
 
         print(np.max(ndwi))
         print(np.min(ndwi))
- 
+
         ndsi, modified_ndsi = self.calculate_ndsi(green=B3, swir1=B11)
-        bt = B11 - 273.15
+        bt = B12 - 273.15
         whiteness, whiteness_test = self.whiteness_test(red=B4, green=B3, blue=B2)
         water_test = self.water_test(ndvi=ndvi, nir=B8)
 
@@ -748,8 +803,12 @@ class Fmask:
             water=water_test,
         )
 
+        plt.figure()
+        plt.imshow(cloud_mask)
+        plt.show()
+
         # Get shadow cloud mask
-        shadow_mask = self.detect_shadows(B4, water_test=water_test)
+        shadow_mask = self.detect_shadows(nir=B8, water_test=water_test)
 
         # Exemplo de uso
         # Suponha que cloud_mask e shadow_mask sejam suas máscaras binárias de nuvens e sombras
@@ -766,9 +825,9 @@ class Fmask:
         # nuvens e sombras são listas de máscaras binárias (arrays numpy)
         # shape é o formato das máscaras originais
 
-        altura_base = 200  # Altura mínima da nuvem em metros
-        altura_top = 1200
-        shape = B1.shape
+        # altura_base = 200  # Altura mínima da nuvem em metros
+        # altura_top = 1200
+        # shape = B1.shape
 
         # Encontrar correspondências e gerar máscaras finais
         # shadow_mask = self.encontrar_correspondencia_intervalo_altura(
@@ -789,7 +848,7 @@ class Fmask:
             np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]),
             cloud_mask,
             shadow_mask,
-            ndwi,
+            water_mask,
         )
 
 
@@ -799,7 +858,7 @@ if __name__ == "__main__":
     # root = './test_images'
     root = "./sentinel_scene/6B"
 
-    inputs = [f"{root}/{img}" for img in os.listdir(root) if ".tif" in img]
+    inputs = [f"{root}/{img}" for img in os.listdir(root) if "TOA.tif" in img]
     # inputs = ['./2004/seixas_20041124.tif']
     # inputs = ['./2004/seixas_20040905.tif']
 
@@ -813,13 +872,19 @@ if __name__ == "__main__":
     fmask = Fmask()
 
     for inp in inputs:
-        file_name = f'{inp.split("/")[-1].split(".")[0]}_result.png'
+        file_name = f'{inp.split("/")[-1].split(".")[0]}_result'
         color_composite, cloud_mask, shadow_mask, water_mask = fmask.create_fmask(inp)
-        # fmask.save_tif(result, inputs[0], './test.tif')
+        # fmask.save_tif(result, inputs[0], "./test.tif")
         fmask.save_plot(
             [cloud_mask, shadow_mask, water_mask],
             color_composite,
             save_dir,
-            name=file_name,
+            name=file_name + ".png",
         )
-        # fmask.save(result, inp, file_name)
+        fmask.save_mask_tif(
+            cloud_mask=cloud_mask,
+            cloud_shadow_mask=shadow_mask,
+            water_mask=water_mask,
+            original_tif_file=inp,
+            output_file=file_name + ".tif",
+        )
