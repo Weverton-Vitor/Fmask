@@ -2,7 +2,7 @@ import rasterio
 import numpy as np
 from scipy.ndimage import label
 import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from typing import List
 from segmentation_mask_overlay import overlay_masks
 from matplotlib.patches import Patch
@@ -361,6 +361,10 @@ class Fmask:
             water_test=water_test, swir1=swir1, swir2=swir2, bt=bt
         )
 
+        # plt.figure(figsize=(15, 15))
+        # plt.imshow(w_cloud_prob > 0.2, cmap="rainbow")
+        # plt.show()
+
         # Eq. 12
         clear_sky_land = np.logical_not(pcp) & np.logical_not(water_test)
 
@@ -371,6 +375,7 @@ class Fmask:
             whiteness=whiteness,
             clear_sky_land=clear_sky_land,
         )
+
         # Eq. 17 Problem here
         try:
             land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 82.5) + 0.2
@@ -380,6 +385,7 @@ class Fmask:
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 92.5) + 0.2
         # land_threshold = np.percentile(l_cloud_prob[clear_sky_land], 42.5) + 0.2
         print("Land threshold: ", land_threshold)
+
         # Eq. 18
         # Clouds above water
         # pcl_1 = pcp & water_test & (w_cloud_prob > 0.5)
@@ -389,7 +395,7 @@ class Fmask:
         # Clouds above land
         # pcl_2 = pcp & (water_test == False) & (l_cloud_prob > land_threshold)
         pcl_2 = np.logical_and(pcp, np.logical_not(water_test))
-        pcl_2 = np.logical_and(pcl_2, w_cloud_prob > land_threshold)
+        pcl_2 = np.logical_and(pcl_2, l_cloud_prob > land_threshold)
 
         # plt.figure()
         # plt.subplot(1, 2, 1)
@@ -412,6 +418,23 @@ class Fmask:
 
         # pcl =  np.logical_or(np.logical_or(np.logical_or(pcl_1, pcl_2), pcl_3), pcl_4)
         pcl = pcl_1 | pcl_2 | pcl_3 | pcl_4
+
+        # plt.figure(figsize=(15, 15))
+        # plt.imshow(pcl_1)
+        # plt.show()
+
+        # plt.figure(figsize=(15, 15))
+        # plt.imshow(pcl_2)
+        # plt.show()
+
+        # plt.figure(figsize=(15, 15))
+        # plt.imshow(pcl_3)
+        # plt.show()
+
+        # plt.figure(figsize=(15, 15))
+        # plt.imshow(pcl_4)
+        # plt.show()
+
         return pcl
 
     def detect_clouds(
@@ -488,16 +511,18 @@ class Fmask:
         flood_fill_nir = self.flood_fill_transformation(nir)
         # PCSL(Potential Cloud Shadow Layer) test
 
-        plt.figure(figsize=(25, 15))
-        plt.imshow(
-            # ((flood_fill_nir - nir) < -0.25) & np.logical_not(water_test), cmap="gray"
-            ((flood_fill_nir - nir) < -0.25) & np.logical_not(water_test),
-            cmap="gray",
+        result = (
+            ((flood_fill_nir - nir) > -0.1297589)
+            & ((flood_fill_nir - nir) < -0.0249)
+            & np.logical_not(water_test)
         )
-        plt.title("Flood fill")
-        plt.show()
 
-        return (flood_fill_nir - nir < -0.25) & np.logical_not(water_test)
+        # plt.figure(figsize=(25, 15))
+        # plt.imshow(result, cmap="gray")
+        # plt.title("Flood fill")
+        # plt.show()
+
+        return result
         # return ((flood_fill_b4 - b4) < 25) & np.logical_not(water_test)
 
     def save_one_tif(self, band: np.ndarray, tif_file: str, output_file: str) -> None:
@@ -533,7 +558,7 @@ class Fmask:
 
         mask_final = np.zeros_like(cloud_mask).astype(np.int8)
 
-        # mask_final[cloud_shadow_mask] = 2
+        mask_final[cloud_shadow_mask] = 2
         mask_final[cloud_mask] = 1
         mask_final[water_mask] = 3
 
@@ -803,12 +828,14 @@ class Fmask:
             water=water_test,
         )
 
-        plt.figure()
-        plt.imshow(cloud_mask)
-        plt.show()
+        # plt.figure()
+        # plt.imshow(cloud_mask)
+        # plt.show()
 
         # Get shadow cloud mask
         shadow_mask = self.detect_shadows(nir=B8, water_test=water_test)
+
+        # self.save_one_tif(shadow_mask, tif_file, 'shadow.tif')
 
         # Exemplo de uso
         # Suponha que cloud_mask e shadow_mask sejam suas máscaras binárias de nuvens e sombras
@@ -842,7 +869,8 @@ class Fmask:
         #     shape=shape,
         # )
 
-        water_mask = np.logical_and(ndwi, water_test)
+        water_mask = np.logical_and(ndwi > 0.1, water_test)
+        water_mask = Image.fromarray(water_mask).filter(ImageFilter.MaxFilter(size=3))
         # return ndwi, cloud_mask, shadow_mask
         return (
             np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]),
