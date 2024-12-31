@@ -788,8 +788,8 @@ class Fmask:
         B3 = bands[1]  # Green
         B4 = bands[2]  # Red
         B8 = bands[3]  # NIR
-        B11 = bands[4]  #
-        B12 = bands[5]  #
+        B11 = bands[4]  # SWIR 1
+        B12 = bands[5]  # SWIR 2    
 
         # rgb = [B4/np.max(B4), B3/np.max(B3), B2/np.max(B2)]
 
@@ -802,9 +802,6 @@ class Fmask:
         # Calculate the necessary indices
         ndvi, modified_ndvi = self.calculate_ndvi(red=B4, nir=B8)
         ndwi = self.calculate_ndwi(green=B3, nir=B8)
-
-        print(np.max(ndwi))
-        print(np.min(ndwi))
 
         ndsi, modified_ndsi = self.calculate_ndsi(green=B3, swir1=B11)
         bt = B12 - 273.15
@@ -841,12 +838,12 @@ class Fmask:
         # Suponha que cloud_mask e shadow_mask sejam suas máscaras binárias de nuvens e sombras
 
         # Máscaras de nuvens e sombras segmentadas
-        cloud_masks_individuais = self.separar_componentes(cloud_mask)
-        shadow_masks_individuais = self.separar_componentes(shadow_mask)
+        # cloud_masks_individuais = self.separar_componentes(cloud_mask)
+        # shadow_masks_individuais = self.separar_componentes(shadow_mask)
 
-        # Printando o número de nuvens e sombras encontradas
-        print(f"Número de nuvens encontradas: {len(cloud_masks_individuais)}")
-        print(f"Número de sombras encontradas: {len(shadow_masks_individuais)}")
+        # # Printando o número de nuvens e sombras encontradas
+        # print(f"Número de nuvens encontradas: {len(cloud_masks_individuais)}")
+        # print(f"Número de sombras encontradas: {len(shadow_masks_individuais)}")
 
         # Exemplo de uso
         # nuvens e sombras são listas de máscaras binárias (arrays numpy)
@@ -872,6 +869,10 @@ class Fmask:
         water_mask = np.logical_and(ndwi > 0.1, water_test)
         water_mask = Image.fromarray(water_mask).filter(ImageFilter.MaxFilter(size=3))
         # return ndwi, cloud_mask, shadow_mask
+
+
+        bands = self.read_landsat_bands(tif_file)
+
         return (
             np.transpose(np.array([bands[4], bands[3], bands[2]]), [1, 2, 0]),
             cloud_mask,
